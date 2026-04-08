@@ -36,8 +36,10 @@ export async function POST(request: Request) {
     }
 
     // Run the scraper
+    console.log("Scraping URL:", product.url);
     const result = await scrapeProduct(product.url);
-
+    console.log("Scrape result:", result);
+    
     if (!result.price) {
       return NextResponse.json({
         success: false,

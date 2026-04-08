@@ -37,7 +37,7 @@ export async function launchBrowser(): Promise<Browser> {
       "--disable-blink-features=AutomationControlled",
     ],
     ignoreHTTPSErrors: true,
-  });
+  } as any);
 }
 
 // ── Stealth page setup ────────────────────────────────────────

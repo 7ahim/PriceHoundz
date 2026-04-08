@@ -76,6 +76,18 @@ export default function DashboardClient({ profile, products, allHistory }: Props
     startTransition(async () => {
       const result = await addProduct(fd);
       if (result?.error) { setAddError(result.error); return; }
+
+      if (result?.product?.id) {
+        await fetch("/api/scrape", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            productId: result.product.id,
+          }),
+        });
+      }
       setShowAddModal(false);
       formRef.current?.reset();
     });

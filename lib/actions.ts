@@ -5,6 +5,34 @@ import { revalidatePath } from "next/cache";
 import { detectPlatform } from "@/lib/utils";
 
 // ── Add a product to track ────────────────────────────────────
+// export async function addProduct(formData: FormData) {
+//   const supabase = await createClient();
+//   const { data: { user } } = await supabase.auth.getUser();
+//   if (!user) return { error: "Not authenticated" };
+
+//   const url = formData.get("url") as string;
+//   const targetPrice = parseFloat(formData.get("target_price") as string);
+//   const name = (formData.get("name") as string) || null;
+
+//   if (!url || isNaN(targetPrice) || targetPrice <= 0) {
+//     return { error: "Invalid URL or target price" };
+//   }
+
+//   const platform = detectPlatform(url);
+
+//   const { error } = await supabase.from("tracked_products").insert({
+//     user_id: user.id,
+//     url,
+//     name,
+//     platform,
+//     target_price: targetPrice,
+//   });
+
+//   if (error) return { error: error.message };
+
+//   revalidatePath("/dashboard");
+//   return { success: true };
+// }
 export async function addProduct(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -20,18 +48,28 @@ export async function addProduct(formData: FormData) {
 
   const platform = detectPlatform(url);
 
-  const { error } = await supabase.from("tracked_products").insert({
-    user_id: user.id,
-    url,
-    name,
-    platform,
-    target_price: targetPrice,
-  });
+  // ✅ FIXED INSERT
+  const { data, error } = await supabase
+    .from("tracked_products")
+    .insert({
+      user_id: user.id,
+      url,
+      name,
+      platform,
+      target_price: targetPrice,
+    })
+    .select()     // ⭐ important
+    .single();    // ⭐ important
 
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard");
-  return { success: true };
+
+  // ✅ RETURN PRODUCT
+  return {
+    success: true,
+    product: data,
+  };
 }
 
 // ── Delete a tracked product ──────────────────────────────────
