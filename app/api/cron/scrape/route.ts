@@ -1,40 +1,40 @@
 // app/api/cron/scrape/route.ts
 // GET /api/cron/scrape
 //
-// This route is called on a schedule by Vercel Cron (or any external
-// cron service like cron-job.org / GitHub Actions).
+// Scheduled by vercel.json — runs every 4 hours.
+// Also callable manually: GET /api/cron/scrape
+// with header: Authorization: Bearer <CRON_SECRET>
 //
-// It MUST be protected by the CRON_SECRET env var — never expose it publicly.
-//
-// Vercel cron config (vercel.json):
-// {
-//   "crons": [{ "path": "/api/cron/scrape", "schedule": "0 */4 * * *" }]
-// }
-// → runs every 4 hours
+// vercel.json:
+// { "crons": [{ "path": "/api/cron/scrape", "schedule": "0 */4 * * *" }] }
 
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { scrapeProduct } from "@/lib/scrapers";
+import { scrapeProduct }     from "@/lib/scrapers";
 
-// Max products to scrape in one cron invocation.
-// Vercel Hobby functions time out at 10 s; Pro at 60 s.
-// Adjust this based on your plan.
-const BATCH_SIZE = 10;
+// Vercel Hobby = 10 s max / Pro = 300 s max function duration.
+// Keep BATCH_SIZE small on Hobby; increase on Pro.
+const BATCH_SIZE  = 10;
+const CONCURRENCY = 3;   // parallel scrapes per mini-batch
 
 export async function GET(request: Request) {
-  // ── Auth: verify the cron secret ─────────────────────────
-  const authHeader = request.headers.get("authorization");
-  const expectedSecret = `Bearer ${process.env.CRON_SECRET}`;
+  // ── Verify cron secret ────────────────────────────────────
+  const auth     = request.headers.get("authorization");
+  const expected = `Bearer ${process.env.CRON_SECRET}`;
 
-  if (!process.env.CRON_SECRET || authHeader !== expectedSecret) {
+  // Vercel automatically sets x-vercel-cron-signature for cron invocations.
+  // We also accept a manual Bearer token for local testing.
+  const isVercelCron = request.headers.get("x-vercel-cron-signature") != null;
+
+  if (!isVercelCron && (!process.env.CRON_SECRET || auth !== expected)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const admin = createAdminClient();
-  const results: Record<string, any>[] = [];
+  const admin   = createAdminClient();
+  const summary: Array<{ id: string; price: number | null; alert: boolean; error?: string }> = [];
 
   try {
-    // Fetch all active products, oldest-updated first so no product starves
+    // Fetch active products ordered by oldest scrape first (fair rotation)
     const { data: products, error } = await admin
       .from("tracked_products")
       .select("*")
@@ -43,108 +43,103 @@ export async function GET(request: Request) {
       .limit(BATCH_SIZE);
 
     if (error) throw error;
+
     if (!products?.length) {
-      return NextResponse.json({ message: "No active products to scrape", scraped: 0 });
+      return NextResponse.json({ message: "No active products", scraped: 0 });
     }
 
-    // Scrape products concurrently in small batches to avoid memory spikes.
-    // 3 at a time is safe on a 512 MB serverless function.
-    const CONCURRENCY = 3;
-
+    // Process in mini-batches of CONCURRENCY
     for (let i = 0; i < products.length; i += CONCURRENCY) {
       const batch = products.slice(i, i + CONCURRENCY);
 
-      await Promise.all(
+      await Promise.allSettled(
         batch.map(async (product: typeof products[number]) => {
-          const entry: Record<string, any> = { id: product.id, url: product.url };
-
           try {
             const scraped = await scrapeProduct(product.url);
-            entry.scraped_price = scraped.price;
-            entry.error         = scraped.error ?? null;
 
             if (!scraped.price) {
-              results.push(entry);
+              summary.push({ id: product.id, price: null, alert: false, error: scraped.error });
               return;
             }
 
-            // ── Persist price history ────────────────────────
+            // ── Write price history ──────────────────────────
             await admin.from("price_history").insert({
               product_id: product.id,
-              price: scraped.price,
+              price:      scraped.price,
             });
 
-            // ── Update current price on the product ──────────
-            const updates: Record<string, any> = {
-              current_price: scraped.price,
-            };
-            if (scraped.name && !product.name)         updates.name      = scraped.name;
+            // ── Update product row ───────────────────────────
+            const updates: Record<string, any> = { current_price: scraped.price };
+            if (scraped.name     && !product.name)      updates.name      = scraped.name;
             if (scraped.imageUrl && !product.image_url) updates.image_url = scraped.imageUrl;
 
-            // ── Check if target price has been hit ───────────
             const targetHit =
-              scraped.price <= product.target_price &&
-              !product.notify_sent;           // only alert once per target cycle
-
-            if (targetHit) {
-              updates.notify_sent = true;
-              entry.alert = true;
-            }
+              scraped.price <= product.target_price && !product.notify_sent;
+            if (targetHit) updates.notify_sent = true;
 
             await admin
               .from("tracked_products")
               .update(updates)
               .eq("id", product.id);
 
-            // ── Trigger email notification ───────────────────
-            // We call the notification route internally rather than
-            // sending the email directly here — keeps concerns separate
-            // and lets the notification logic run in its own context.
+            // ── Email notification ───────────────────────────
             if (targetHit) {
-              try {
-                const notifUrl = new URL("/api/notify", getBaseUrl());
-                await fetch(notifUrl.toString(), {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${process.env.CRON_SECRET}`,
-                  },
-                  body: JSON.stringify({
-                    productId:    product.id,
-                    userId:       product.user_id,
-                    currentPrice: scraped.price,
-                    targetPrice:  product.target_price,
-                    productName:  scraped.name ?? product.name ?? product.url,
-                    productUrl:   product.url,
-                  }),
-                });
-              } catch (notifErr) {
-                console.error("[cron] Failed to send notification:", notifErr);
-              }
+              await triggerNotification({
+                productId:    product.id,
+                userId:       product.user_id,
+                currentPrice: scraped.price,
+                targetPrice:  product.target_price,
+                productName:  scraped.name ?? product.name ?? product.url,
+                productUrl:   product.url,
+              });
             }
-          } catch (err: any) {
-            entry.error = err.message;
-            console.error(`[cron] Error scraping ${product.url}:`, err);
-          }
 
-          results.push(entry);
+            summary.push({ id: product.id, price: scraped.price, alert: targetHit });
+          } catch (err: any) {
+            console.error(`[cron] Failed ${product.id}:`, err.message);
+            summary.push({ id: product.id, price: null, alert: false, error: err.message });
+          }
         })
       );
     }
 
+    const alertCount = summary.filter((s) => s.alert).length;
+    const failCount  = summary.filter((s) => s.error).length;
+
     return NextResponse.json({
-      message: "Cron scrape complete",
-      scraped: results.length,
-      results,
+      message:  "Cron complete",
+      scraped:  summary.length,
+      alerts:   alertCount,
+      failures: failCount,
+      results:  summary,
     });
   } catch (err: any) {
-    console.error("[cron] Fatal error:", err);
+    console.error("[cron] Fatal:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-function getBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+async function triggerNotification(payload: {
+  productId:    string;
+  userId:       string;
+  currentPrice: number;
+  targetPrice:  number;
+  productName:  string;
+  productUrl:   string;
+}) {
+  try {
+    const base = process.env.NEXT_PUBLIC_APP_URL
+      ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+    await fetch(`${base}/api/notify`, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        Authorization:   `Bearer ${process.env.CRON_SECRET}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("[cron] Notification request failed:", err);
+  }
 }

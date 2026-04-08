@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { addProduct, deleteProduct, toggleProduct, updateTargetPrice } from "@/lib/actions";
+import {
+  addProduct, deleteProduct, toggleProduct,
+  updateTargetPrice, revalidateDashboard,
+} from "@/lib/actions";
 import { formatPrice, getPlatformLabel, getPlatformColor, timeAgo } from "@/lib/utils";
 import type { Profile, TrackedProduct, PriceHistory } from "@/types/supabase";
 
-// Dynamically import the tour so it never SSR-renders
-// (Joyride uses window/localStorage)
 const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"), { ssr: false });
 const TourTriggerButton = dynamic(
   () => import("@/components/OnboardingTour").then((m) => ({ default: m.TourTriggerButton })),
@@ -20,12 +21,16 @@ const TourTriggerButton = dynamic(
 
 // ── Types ─────────────────────────────────────────────────────
 interface Props {
-  profile: Profile | null;
-  products: TrackedProduct[];
+  profile:    Profile | null;
+  products:   TrackedProduct[];
   allHistory: PriceHistory[];
 }
 
-// ── Custom Recharts tooltip ───────────────────────────────────
+interface OptimisticProduct extends TrackedProduct {
+  _scraping: boolean;
+}
+
+// ── Recharts tooltip ──────────────────────────────────────────
 function PriceTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -39,19 +44,48 @@ function PriceTooltip({ active, payload, label }: any) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────
-export default function DashboardClient({ profile, products, allHistory }: Props) {
-  const [selectedId, setSelectedId] = useState<string | null>(products[0]?.id ?? null);
-  const [showAddModal, setShowAddModal]   = useState(false);
+// ── Spinner ───────────────────────────────────────────────────
+function Spinner({ size = 14 }: { size?: number }) {
+  return (
+    <span style={{
+      display: "inline-block",
+      width: size, height: size,
+      border: "2px solid rgba(232,255,71,0.2)",
+      borderTopColor: "#e8ff47",
+      borderRadius: "50%",
+      animation: "ph-spin 0.7s linear infinite",
+      flexShrink: 0,
+    }} />
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────
+export default function DashboardClient({
+  profile,
+  products: initialProducts,
+  allHistory: initialHistory,
+}: Props) {
+  // ── State ──────────────────────────────────────────────────
+  const [localProducts, setLocalProducts] = useState<OptimisticProduct[]>(
+    initialProducts.map((p) => ({ ...p, _scraping: false }))
+  );
+  const [localHistory, setLocalHistory] = useState<PriceHistory[]>(initialHistory);
+
+  // BUG FIX: initialise selectedId from localProducts not initialProducts
+  // so it always points to the first item in the rendered list.
+  const [selectedId,    setSelectedId]    = useState<string | null>(initialProducts[0]?.id ?? null);
+  const [showAddModal,  setShowAddModal]  = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editProduct, setEditProduct]     = useState<TrackedProduct | null>(null);
-  const [addError, setAddError]           = useState<string | null>(null);
-  const [forceTour, setForceTour]         = useState(false);
-  const [isPending, startTransition]      = useTransition();
+  const [editProduct,   setEditProduct]   = useState<OptimisticProduct | null>(null);
+  const [addError,      setAddError]      = useState<string | null>(null);
+  const [scrapeError,   setScrapeError]   = useState<string | null>(null);
+  const [forceTour,     setForceTour]     = useState(false);
+  const [isPending,     startTransition]  = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
 
-  const selected     = products.find((p) => p.id === selectedId) ?? null;
-  const history      = allHistory
+  // ── Derived ───────────────────────────────────────────────
+  const selected      = localProducts.find((p) => p.id === selectedId) ?? null;
+  const history       = localHistory
     .filter((h) => h.product_id === selectedId)
     .map((h) => ({
       date:  new Date(h.scraped_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" }),
@@ -60,68 +94,189 @@ export default function DashboardClient({ profile, products, allHistory }: Props
   const historyPrices = history.map((h) => h.price);
   const allTimeLow    = historyPrices.length ? Math.min(...historyPrices) : null;
   const allTimeHigh   = historyPrices.length ? Math.max(...historyPrices) : null;
-  const totalTracked  = products.length;
-  const totalAlerts   = products.filter((p) => p.notify_sent).length;
-  const activeCount   = products.filter((p) => p.is_active).length;
+  const totalTracked  = localProducts.length;
+  const totalAlerts   = localProducts.filter((p) => p.notify_sent).length;
+  const activeCount   = localProducts.filter((p) => p.is_active).length;
 
   const initials = profile?.full_name
     ? profile.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
     : profile?.email?.[0]?.toUpperCase() ?? "?";
 
-  // ── Handlers ────────────────────────────────────────────────
+  // ── scrapeNow ─────────────────────────────────────────────
+  // Calls POST /api/scrape then updates local state in-place —
+  // no page refresh needed. The price card updates live.
+  const scrapeNow = useCallback(async (productId: string) => {
+    setScrapeError(null);
+
+    // Ensure spinner is shown for this product
+    setLocalProducts((prev) =>
+      prev.map((p) => p.id === productId ? { ...p, _scraping: true } : p)
+    );
+
+    try {
+      const res  = await fetch("/api/scrape", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ productId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setScrapeError(data.error ?? "Scrape failed — will retry on the next cron run.");
+        // Turn off spinner but keep the product in the list
+        setLocalProducts((prev) =>
+          prev.map((p) => p.id === productId ? { ...p, _scraping: false } : p)
+        );
+        return;
+      }
+
+      // ── Update price + metadata in local state immediately ──
+      setLocalProducts((prev) =>
+        prev.map((p) =>
+          p.id === productId
+            ? {
+                ...p,
+                _scraping:     false,
+                current_price: data.price    ?? p.current_price,
+                name:          data.name     ?? p.name,
+                image_url:     data.imageUrl ?? p.image_url,
+              }
+            : p
+        )
+      );
+
+      // Append a new history point so the chart updates immediately
+      if (data.price) {
+        setLocalHistory((prev) => [
+          ...prev,
+          {
+            id:         `opt-${Date.now()}`,
+            product_id: productId,
+            price:      data.price,
+            scraped_at: new Date().toISOString(),
+          },
+        ]);
+      }
+
+      // Revalidate server cache so a hard-refresh also shows the right data
+      await revalidateDashboard();
+    } catch {
+      setScrapeError("Network error — could not reach the scrape endpoint.");
+      setLocalProducts((prev) =>
+        prev.map((p) => p.id === productId ? { ...p, _scraping: false } : p)
+      );
+    }
+  }, []);
+
+  // ── handleAdd ────────────────────────────────────────────
+  // KEY FIX:
+  //   1. Build the optimistic product object before any async work.
+  //   2. Call setLocalProducts + setSelectedId SYNCHRONOUSLY and
+  //      OUTSIDE startTransition so React flushes them immediately.
+  //   3. Only the server action (addProduct) goes inside startTransition.
+  //   4. scrapeNow runs after the server action resolves, updating
+  //      the already-selected product's price in-place.
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setAddError(null);
-    const fd = new FormData(e.currentTarget);
-    startTransition(async () => {
+
+    const fd  = new FormData(e.currentTarget);
+    const url = fd.get("url") as string;
+
+    // Generate a temporary ID so we can select the row immediately
+    const tempId = `temp-${Date.now()}`;
+
+    const optimistic: OptimisticProduct = {
+      id:            tempId,
+      user_id:       profile?.id ?? "",
+      url,
+      name:          (fd.get("name") as string) || null,
+      image_url:     null,
+      platform:      null,
+      target_price:  parseFloat(fd.get("target_price") as string),
+      current_price: null,
+      is_active:     true,
+      notify_sent:   false,
+      created_at:    new Date().toISOString(),
+      updated_at:    new Date().toISOString(),
+      _scraping:     true,
+    };
+
+    // ── STEP 1: Close modal + show new product IMMEDIATELY ──
+    // These run synchronously before any async work so the UI
+    // switches to the new product's detail view right away.
+    setShowAddModal(false);
+    formRef.current?.reset();
+    setLocalProducts((prev) => [optimistic, ...prev]);
+    setSelectedId(tempId);
+
+    // ── STEP 2: Persist to DB (server action) ───────────────
+    let realProductId: string;
+    try {
       const result = await addProduct(fd);
-      if (result?.error) { setAddError(result.error); return; }
-
-      if (result?.product?.id) {
-        await fetch("/api/scrape", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            productId: result.product.id,
-          }),
-        });
+      if (result?.error) {
+        setAddError(result.error);
+        // Roll back the optimistic row
+        setLocalProducts((prev) => prev.filter((p) => p.id !== tempId));
+        setSelectedId(localProducts[0]?.id ?? null);
+        setShowAddModal(true);
+        return;
       }
-      setShowAddModal(false);
-      formRef.current?.reset();
-    });
+      realProductId = result.productId!;
+    } catch {
+      setAddError("Failed to save product. Please try again.");
+      setLocalProducts((prev) => prev.filter((p) => p.id !== tempId));
+      setSelectedId(localProducts[0]?.id ?? null);
+      setShowAddModal(true);
+      return;
+    }
+
+    // ── STEP 3: Swap tempId → real DB id ───────────────────
+    // We do this before scraping so the scrape API gets the real id.
+    setLocalProducts((prev) =>
+      prev.map((p) => p.id === tempId ? { ...p, id: realProductId } : p)
+    );
+    setSelectedId(realProductId);
+
+    // ── STEP 4: Scrape immediately — price updates in-place ─
+    await scrapeNow(realProductId);
   };
 
+  // ── handleDelete ─────────────────────────────────────────
   const handleDelete = (id: string) => {
-    startTransition(async () => {
-      await deleteProduct(id);
-      if (selectedId === id)
-        setSelectedId(products.find((p) => p.id !== id)?.id ?? null);
-    });
+    const remaining = localProducts.filter((p) => p.id !== id);
+    setLocalProducts(remaining);
+    if (selectedId === id) setSelectedId(remaining[0]?.id ?? null);
+    startTransition(async () => { await deleteProduct(id); });
   };
 
+  // ── handleToggle ─────────────────────────────────────────
   const handleToggle = (id: string, isActive: boolean) => {
+    setLocalProducts((prev) =>
+      prev.map((p) => p.id === id ? { ...p, is_active: !isActive } : p)
+    );
     startTransition(async () => { await toggleProduct(id, isActive); });
   };
 
+  // ── handleEditSave ───────────────────────────────────────
   const handleEditSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editProduct) return;
     const fd       = new FormData(e.currentTarget);
     const newPrice = parseFloat(fd.get("target_price") as string);
-    startTransition(async () => {
-      await updateTargetPrice(editProduct.id, newPrice);
-      setShowEditModal(false);
-      setEditProduct(null);
-    });
+    setLocalProducts((prev) =>
+      prev.map((p) => p.id === editProduct.id ? { ...p, target_price: newPrice, notify_sent: false } : p)
+    );
+    setShowEditModal(false);
+    setEditProduct(null);
+    startTransition(async () => { await updateTargetPrice(editProduct.id, newPrice); });
   };
 
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
         :root {
           --bg:#0a0a0a; --bg2:#111111; --bg3:#181818;
           --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.14);
@@ -130,6 +285,12 @@ export default function DashboardClient({ profile, products, allHistory }: Props
           --success:#6ee7b7; --danger:#f87171;
         }
         body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
+
+        @keyframes ph-spin    { to { transform:rotate(360deg); } }
+        @keyframes ph-pulse   { 0%,100%{opacity:1} 50%{opacity:0.45} }
+        @keyframes shimmer    { to { background-position:-200% 0; } }
+        @keyframes modalIn    { from{opacity:0;transform:scale(0.97) translateY(8px)} to{opacity:1;transform:none} }
+        @keyframes slideInTop { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
 
         .db-wrap { display:flex; min-height:100vh; width:100%; }
 
@@ -146,7 +307,6 @@ export default function DashboardClient({ profile, products, allHistory }: Props
           display:flex; align-items:center; gap:8px;
           color:var(--text); text-decoration:none; margin-bottom:20px;
         }
-        .db-logo-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
         .db-logo-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; }
         .db-add-btn {
           width:100%; background:var(--accent); color:#0a0a0a;
@@ -167,14 +327,14 @@ export default function DashboardClient({ profile, products, allHistory }: Props
           padding:10px; border:1px solid transparent; border-radius:4px;
           cursor:pointer; transition:all 0.15s; margin-bottom:4px; position:relative;
         }
-        .db-product-item:hover { background:rgba(255,255,255,0.03); border-color:var(--border); }
+        .db-product-item:hover  { background:rgba(255,255,255,0.03); border-color:var(--border); }
         .db-product-item.active { background:rgba(232,255,71,0.05); border-color:rgba(232,255,71,0.2); }
         .db-product-item-name {
           font-size:12px; font-weight:500; color:var(--text); margin-bottom:4px;
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:185px;
         }
-        .db-product-item-meta { display:flex; align-items:center; gap:6px; }
-        .db-platform-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+        .db-product-item-meta  { display:flex; align-items:center; gap:6px; }
+        .db-platform-dot       { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
         .db-product-item-price { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted2); }
         .db-product-item-status { position:absolute; top:10px; right:10px; width:6px; height:6px; border-radius:50%; }
         .db-sidebar-bottom { padding:16px 20px; border-top:1px solid var(--border); }
@@ -186,7 +346,7 @@ export default function DashboardClient({ profile, products, allHistory }: Props
           font-family:'DM Mono',monospace; font-size:11px; font-weight:500;
           color:var(--accent); flex-shrink:0;
         }
-        .db-user-info { flex:1; overflow:hidden; }
+        .db-user-info  { flex:1; overflow:hidden; }
         .db-user-name  { font-size:12px; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .db-user-email { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .db-signout-btn { background:none; border:none; cursor:pointer; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); padding:4px; transition:color 0.2s; }
@@ -200,53 +360,79 @@ export default function DashboardClient({ profile, products, allHistory }: Props
 
         /* ── Stats ── */
         .db-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:28px; }
-        .db-stat-card { background:var(--bg2); border:1px solid var(--border); padding:16px 18px; }
+        .db-stat-card  { background:var(--bg2); border:1px solid var(--border); padding:16px 18px; }
         .db-stat-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:0.1em; margin-bottom:8px; }
         .db-stat-value { font-family:'Syne',sans-serif; font-weight:700; font-size:24px; letter-spacing:-1px; }
         .db-stat-sub   { font-size:11px; color:var(--muted); margin-top:4px; }
 
+        /* ── Banners ── */
+        .db-scrape-banner {
+          display:flex; align-items:center; gap:12px;
+          background:rgba(232,255,71,0.05); border:1px solid rgba(232,255,71,0.2);
+          padding:12px 16px; margin-bottom:20px;
+          font-family:'DM Mono',monospace; font-size:12px; color:var(--accent);
+          animation:slideInTop 0.25s ease, ph-pulse 1.8s ease-in-out 0.25s infinite;
+        }
+        .db-scrape-error {
+          display:flex; align-items:center; gap:10px;
+          background:rgba(248,113,113,0.07); border:1px solid rgba(248,113,113,0.25);
+          padding:12px 16px; margin-bottom:20px;
+          font-family:'DM Mono',monospace; font-size:12px; color:var(--danger);
+          animation:slideInTop 0.2s ease;
+        }
+
         /* ── Empty state ── */
-        .db-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:80px 32px; text-align:center; }
-        .db-empty-icon { width:64px; height:64px; border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-size:28px; }
+        .db-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:80px 32px; text-align:center; }
+        .db-empty-icon  { width:64px; height:64px; border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-size:28px; }
         .db-empty-title { font-family:'Syne',sans-serif; font-weight:700; font-size:22px; letter-spacing:-0.5px; }
         .db-empty-sub   { font-size:14px; color:var(--muted2); font-weight:300; max-width:320px; line-height:1.6; }
 
         /* ── Detail ── */
-        .db-detail-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; }
+        .db-detail-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
         .db-detail-name   { font-family:'Syne',sans-serif; font-weight:700; font-size:clamp(18px,2vw,26px); letter-spacing:-0.5px; line-height:1.2; }
-        .db-detail-actions { display:flex; gap:8px; flex-shrink:0; }
+        .db-detail-actions { display:flex; gap:8px; flex-shrink:0; flex-wrap:wrap; }
         .db-icon-btn {
           background:var(--bg2); border:1px solid var(--border2); color:var(--muted2); cursor:pointer;
           padding:8px 12px; font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.05em;
           transition:all 0.2s; display:flex; align-items:center; gap:6px;
         }
-        .db-icon-btn:hover         { border-color:rgba(255,255,255,0.25); color:var(--text); }
-        .db-icon-btn.danger:hover  { border-color:var(--danger); color:var(--danger); }
-        .db-icon-btn.accent        { border-color:rgba(232,255,71,0.3); color:var(--accent); }
-        .db-icon-btn.accent:hover  { background:rgba(232,255,71,0.05); }
+        .db-icon-btn:hover        { border-color:rgba(255,255,255,0.25); color:var(--text); }
+        .db-icon-btn.danger:hover { border-color:var(--danger); color:var(--danger); }
+        .db-icon-btn.accent       { border-color:rgba(232,255,71,0.3); color:var(--accent); }
+        .db-icon-btn.accent:hover { background:rgba(232,255,71,0.05); }
+        .db-icon-btn:disabled     { opacity:0.4; cursor:not-allowed; pointer-events:none; }
 
         /* ── Price cards ── */
-        .db-price-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
-        .db-price-card  { background:var(--bg2); border:1px solid var(--border); padding:14px 16px; }
+        .db-price-cards     { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+        .db-price-card      { background:var(--bg2); border:1px solid var(--border); padding:14px 16px; position:relative; overflow:hidden; }
         .db-price-card-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:0.1em; margin-bottom:8px; }
-        .db-price-card-value { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; }
-        .db-price-card-sub   { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); margin-top:4px; }
+        .db-price-card-value { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; min-height:28px; display:flex; align-items:center; gap:8px; }
+        .db-price-card-sub  { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); margin-top:4px; }
+
+        /* shimmer skeleton */
+        .db-skeleton {
+          height:24px; width:80px; border-radius:2px;
+          background:linear-gradient(90deg, var(--bg3) 25%, rgba(255,255,255,0.05) 50%, var(--bg3) 75%);
+          background-size:200% 100%;
+          animation:shimmer 1.3s infinite;
+        }
 
         /* ── Chart ── */
-        .db-chart-section  { background:var(--bg2); border:1px solid var(--border); padding:20px; margin-bottom:24px; }
-        .db-chart-header   { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-        .db-chart-title    { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; }
-        .db-chart-legend   { display:flex; gap:16px; }
+        .db-chart-section { background:var(--bg2); border:1px solid var(--border); padding:20px; margin-bottom:24px; }
+        .db-chart-header  { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+        .db-chart-title   { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; }
+        .db-chart-legend  { display:flex; gap:16px; }
         .db-chart-legend-item { display:flex; align-items:center; gap:6px; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); }
         .db-chart-legend-line { width:20px; height:2px; }
-        .db-no-history { height:200px; display:flex; align-items:center; justify-content:center; font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); }
+        .db-no-history { height:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); }
 
         /* ── Badges ── */
-        .db-badge { display:inline-flex; align-items:center; gap:5px; font-family:'DM Mono',monospace; font-size:10px; padding:3px 8px; border:1px solid var(--border); color:var(--muted2); }
-        .db-status-badge  { display:inline-flex; align-items:center; gap:5px; font-family:'DM Mono',monospace; font-size:10px; padding:3px 10px; }
-        .db-status-active { background:rgba(110,231,183,0.08); color:var(--success); border:1px solid rgba(110,231,183,0.2); }
-        .db-status-paused { background:rgba(107,107,107,0.08); color:var(--muted2); border:1px solid var(--border); }
-        .db-status-hit    { background:rgba(232,255,71,0.08); color:var(--accent); border:1px solid rgba(232,255,71,0.2); }
+        .db-badge        { display:inline-flex; align-items:center; gap:5px; font-family:'DM Mono',monospace; font-size:10px; padding:3px 8px; border:1px solid var(--border); color:var(--muted2); }
+        .db-status-badge { display:inline-flex; align-items:center; gap:5px; font-family:'DM Mono',monospace; font-size:10px; padding:3px 10px; }
+        .db-status-active  { background:rgba(110,231,183,0.08); color:var(--success); border:1px solid rgba(110,231,183,0.2); }
+        .db-status-paused  { background:rgba(107,107,107,0.08); color:var(--muted2); border:1px solid var(--border); }
+        .db-status-hit     { background:rgba(232,255,71,0.08); color:var(--accent); border:1px solid rgba(232,255,71,0.2); }
+        .db-status-loading { background:rgba(232,255,71,0.05); color:var(--accent); border:1px solid rgba(232,255,71,0.15); animation:ph-pulse 1.5s ease-in-out infinite; }
 
         /* ── Modal ── */
         .db-modal-overlay {
@@ -255,78 +441,73 @@ export default function DashboardClient({ profile, products, allHistory }: Props
           display:flex; align-items:center; justify-content:center;
           z-index:500; padding:24px;
         }
-        .db-modal { background:var(--bg2); border:1px solid var(--border2); padding:32px; width:100%; max-width:480px; animation:modalIn 0.2s ease; }
-        @keyframes modalIn { from{opacity:0;transform:scale(0.97) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
-        .db-modal-title { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; margin-bottom:6px; }
-        .db-modal-sub   { font-size:13px; color:var(--muted2); margin-bottom:28px; font-weight:300; line-height:1.5; }
-        .db-field       { margin-bottom:18px; }
-        .db-label       { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted2); letter-spacing:0.08em; display:block; margin-bottom:8px; }
-        .db-input       { width:100%; background:var(--bg3); border:1px solid var(--border2); color:var(--text); padding:11px 14px; font-family:'DM Mono',monospace; font-size:13px; outline:none; transition:border-color 0.2s; }
-        .db-input:focus { border-color:rgba(232,255,71,0.4); }
+        .db-modal        { background:var(--bg2); border:1px solid var(--border2); padding:32px; width:100%; max-width:480px; animation:modalIn 0.2s ease; }
+        .db-modal-title  { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; margin-bottom:6px; }
+        .db-modal-sub    { font-size:13px; color:var(--muted2); margin-bottom:28px; font-weight:300; line-height:1.5; }
+        .db-field        { margin-bottom:18px; }
+        .db-label        { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted2); letter-spacing:0.08em; display:block; margin-bottom:8px; }
+        .db-input        { width:100%; background:var(--bg3); border:1px solid var(--border2); color:var(--text); padding:11px 14px; font-family:'DM Mono',monospace; font-size:13px; outline:none; transition:border-color 0.2s; }
+        .db-input:focus  { border-color:rgba(232,255,71,0.4); }
         .db-input::placeholder { color:var(--muted); }
         .db-modal-actions { display:flex; gap:10px; margin-top:24px; }
-        .db-btn-submit  { flex:1; background:var(--accent); color:#0a0a0a; border:none; cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; padding:12px; letter-spacing:0.08em; transition:background 0.2s; }
+        .db-btn-submit   { flex:1; background:var(--accent); color:#0a0a0a; border:none; cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; padding:12px; letter-spacing:0.08em; transition:background 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
         .db-btn-submit:disabled { opacity:0.5; cursor:not-allowed; }
         .db-btn-submit:hover:not(:disabled) { background:#d4eb30; }
-        .db-btn-cancel  { background:transparent; color:var(--muted2); border:1px solid var(--border2); cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; padding:12px 20px; letter-spacing:0.08em; transition:all 0.2s; }
+        .db-btn-cancel   { background:transparent; color:var(--muted2); border:1px solid var(--border2); cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; padding:12px 20px; letter-spacing:0.08em; transition:all 0.2s; }
         .db-btn-cancel:hover { color:var(--text); border-color:rgba(255,255,255,0.25); }
-        .db-error-msg   { background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3); color:var(--danger); font-family:'DM Mono',monospace; font-size:11px; padding:10px 14px; margin-bottom:16px; }
+        .db-error-msg    { background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3); color:var(--danger); font-family:'DM Mono',monospace; font-size:11px; padding:10px 14px; margin-bottom:16px; }
 
-        @media(max-width:1024px) { .db-stats,.db-price-cards { grid-template-columns:repeat(2,1fr); } }
-        @media(max-width:768px)  { .db-sidebar { display:none; } .db-main { padding:20px; } }
+        @media(max-width:1100px) { .db-stats,.db-price-cards { grid-template-columns:repeat(2,1fr); } }
+        @media(max-width:768px)  { .db-sidebar{display:none;} .db-main{padding:20px;} }
       `}</style>
 
-      {/* ── Onboarding tour — auto-starts for new users ── */}
-      <OnboardingTour
-        forceStart={forceTour}
-        onFinish={() => setForceTour(false)}
-      />
+      <OnboardingTour forceStart={forceTour} onFinish={() => setForceTour(false)} />
 
       <div className="db-wrap">
+
         {/* ── Sidebar ── */}
         <aside className="db-sidebar">
           <div className="db-sidebar-top">
-            <div className="db-logo-row">
-              <a href="/" className="db-logo" style={{ margin: 0 }}>
-                <div className="db-logo-dot" />
-                PriceHound
-              </a>
-            </div>
+            <a href="/" className="db-logo">
+              <div className="db-logo-dot" /> PriceHound
+            </a>
             <button className="db-add-btn" onClick={() => setShowAddModal(true)}>
               + TRACK NEW PRODUCT
             </button>
           </div>
 
-          <div className="db-sidebar-label">
-            Tracked Products ({products.length})
-          </div>
+          <div className="db-sidebar-label">Tracked ({localProducts.length})</div>
 
           <div className="db-product-list">
-            {products.length === 0 && (
-              <div style={{ padding: "16px 10px", fontFamily: "'DM Mono',monospace", fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                No products yet. Add one to get started.
-              </div>
+            {localProducts.length === 0 && (
+              <p style={{ padding: "16px 10px", fontFamily: "'DM Mono',monospace", fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
+                No products yet.
+              </p>
             )}
-            {products.map((p) => {
-              const isHit = p.current_price != null && p.current_price <= p.target_price;
+            {localProducts.map((p) => {
+              const isHit = !p._scraping && p.current_price != null && p.current_price <= p.target_price;
+              let hostname = p.url;
+              try { hostname = new URL(p.url).hostname.replace("www.", ""); } catch {}
+
               return (
                 <div
                   key={p.id}
                   className={`db-product-item${selectedId === p.id ? " active" : ""}`}
                   onClick={() => setSelectedId(p.id)}
                 >
-                  <div
-                    className="db-product-item-status"
-                    style={{ background: isHit ? "var(--accent)" : p.is_active ? "var(--success)" : "var(--muted)" }}
-                  />
-                  <div className="db-product-item-name">
-                    {p.name || new URL(p.url).hostname.replace("www.", "")}
-                  </div>
+                  {/* Status dot / spinner */}
+                  {p._scraping
+                    ? <div style={{ position: "absolute", top: 10, right: 10 }}><Spinner size={8} /></div>
+                    : <div className="db-product-item-status" style={{ background: isHit ? "var(--accent)" : p.is_active ? "var(--success)" : "var(--muted)" }} />
+                  }
+                  <div className="db-product-item-name">{p.name || hostname}</div>
                   <div className="db-product-item-meta">
                     <div className="db-platform-dot" style={{ background: getPlatformColor(p.platform) }} />
                     <div className="db-product-item-price">
-                      {p.current_price ? formatPrice(p.current_price) : "—"} →{" "}
-                      <span style={{ color: "var(--accent)" }}>{formatPrice(p.target_price)}</span>
+                      {p._scraping
+                        ? <span style={{ color: "var(--accent)", animation: "ph-pulse 1.5s infinite" }}>scraping…</span>
+                        : <>{p.current_price ? formatPrice(p.current_price) : "—"} → <span style={{ color: "var(--accent)" }}>{formatPrice(p.target_price)}</span></>
+                      }
                     </div>
                   </div>
                 </div>
@@ -348,21 +529,36 @@ export default function DashboardClient({ profile, products, allHistory }: Props
           </div>
         </aside>
 
-        {/* ── Main ── */}
+        {/* ── Main content ── */}
         <main className="db-main">
-          {/* Top bar with guide button */}
           <div className="db-topbar">
             <div className="db-topbar-title">Dashboard</div>
             <div className="db-topbar-right">
-              <TourTriggerButton
-                onClick={() => {
-                  // Remove the seen flag so the tour starts fresh
-                  localStorage.removeItem("pricehound_tour_seen");
-                  setForceTour(true);
-                }}
-              />
+              <TourTriggerButton onClick={() => {
+                localStorage.removeItem("pricehound_tour_seen");
+                setForceTour(true);
+              }} />
             </div>
           </div>
+
+          {/* Scraping in-progress banner */}
+          {localProducts.some((p) => p._scraping) && (
+            <div className="db-scrape-banner">
+              <Spinner size={14} />
+              Fetching current price — this takes 10–30 seconds…
+            </div>
+          )}
+
+          {/* Scrape error banner */}
+          {scrapeError && (
+            <div className="db-scrape-error">
+              ⚠ {scrapeError}
+              <button
+                onClick={() => setScrapeError(null)}
+                style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 16, lineHeight: 1 }}
+              >✕</button>
+            </div>
+          )}
 
           {/* Stats */}
           <div className="db-stats">
@@ -378,7 +574,7 @@ export default function DashboardClient({ profile, products, allHistory }: Props
             </div>
             <div className="db-stat-card">
               <div className="db-stat-label">PRICE CHECKS</div>
-              <div className="db-stat-value">{allHistory.length}</div>
+              <div className="db-stat-value">{localHistory.length}</div>
               <div className="db-stat-sub">data points collected</div>
             </div>
             <div className="db-stat-card">
@@ -389,103 +585,151 @@ export default function DashboardClient({ profile, products, allHistory }: Props
           </div>
 
           {/* Empty state */}
-          {products.length === 0 && (
+          {localProducts.length === 0 && (
             <div className="db-empty">
               <div className="db-empty-icon">🔍</div>
               <div className="db-empty-title">Nothing tracked yet.</div>
-              <p className="db-empty-sub">
-                Add a product URL and your target price. We&apos;ll watch it around the clock and email you when it drops.
-              </p>
-              <button
-                className="db-add-btn"
-                style={{ width: "auto", padding: "12px 28px" }}
-                onClick={() => setShowAddModal(true)}
-              >
+              <p className="db-empty-sub">Add a product URL and your target price. We&apos;ll watch it and email you when it drops.</p>
+              <button className="db-add-btn" style={{ width: "auto", padding: "12px 28px" }} onClick={() => setShowAddModal(true)}>
                 + TRACK YOUR FIRST PRODUCT
               </button>
             </div>
           )}
 
-          {/* Product detail */}
+          {/* ── Product detail ── */}
           {selected && (
             <>
+              {/* Header */}
               <div className="db-detail-header">
-                <div style={{ overflow: "hidden" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <div
-                      className="db-badge"
-                      style={{ borderColor: getPlatformColor(selected.platform), color: getPlatformColor(selected.platform) }}
-                    >
+                <div style={{ overflow: "hidden", flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                    <div className="db-badge" style={{ borderColor: getPlatformColor(selected.platform), color: getPlatformColor(selected.platform) }}>
                       {getPlatformLabel(selected.platform)}
                     </div>
                     <div className={`db-status-badge ${
-                      selected.current_price && selected.current_price <= selected.target_price
-                        ? "db-status-hit"
-                        : selected.is_active ? "db-status-active" : "db-status-paused"
+                      selected._scraping              ? "db-status-loading"
+                      : selected.current_price != null && selected.current_price <= selected.target_price ? "db-status-hit"
+                      : selected.is_active            ? "db-status-active"
+                      : "db-status-paused"
                     }`}>
-                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "currentColor", display: "inline-block" }} />
-                      {selected.current_price && selected.current_price <= selected.target_price
-                        ? "TARGET HIT" : selected.is_active ? "TRACKING" : "PAUSED"}
+                      {selected._scraping ? (
+                        <><Spinner size={8} /> SCRAPING</>
+                      ) : (
+                        <>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "currentColor", display: "inline-block" }} />
+                          {selected.current_price != null && selected.current_price <= selected.target_price ? "TARGET HIT" : selected.is_active ? "TRACKING" : "PAUSED"}
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="db-detail-name">{selected.name || "Unnamed Product"}</div>
+
+                  <div className="db-detail-name">
+                    {selected._scraping && !selected.name ? "Fetching product info…" : selected.name || "Unnamed Product"}
+                  </div>
+
                   <a
                     href={selected.url} target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: "var(--muted)", textDecoration: "none", display: "block", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 500 }}
                     title={selected.url}
-                  >
-                    {selected.url}
-                  </a>
+                  >{selected.url}</a>
+
                   <div style={{ marginTop: 6, fontFamily: "'DM Mono',monospace", fontSize: 10, color: "var(--muted)" }}>
                     added {timeAgo(selected.created_at)}
                   </div>
                 </div>
+
                 <div className="db-detail-actions">
-                  <button className="db-icon-btn accent" onClick={() => { setEditProduct(selected); setShowEditModal(true); }}>
-                    ✎ EDIT TARGET
+                  <button
+                    className="db-icon-btn accent"
+                    onClick={() => { setEditProduct(selected); setShowEditModal(true); }}
+                    disabled={selected._scraping}
+                  >✎ EDIT TARGET</button>
+
+                  <button
+                    className="db-icon-btn"
+                    onClick={() => scrapeNow(selected.id)}
+                    disabled={selected._scraping || isPending}
+                    title="Re-scrape now"
+                  >
+                    {selected._scraping ? <><Spinner size={11} /> SCRAPING</> : "↻ REFRESH"}
                   </button>
-                  <button className="db-icon-btn" onClick={() => handleToggle(selected.id, selected.is_active)} disabled={isPending}>
+
+                  <button
+                    className="db-icon-btn"
+                    onClick={() => handleToggle(selected.id, selected.is_active)}
+                    disabled={selected._scraping || isPending}
+                  >
                     {selected.is_active ? "⏸ PAUSE" : "▶ RESUME"}
                   </button>
-                  <button className="db-icon-btn danger" onClick={() => handleDelete(selected.id)} disabled={isPending}>
-                    ✕ DELETE
-                  </button>
+
+                  <button
+                    className="db-icon-btn danger"
+                    onClick={() => handleDelete(selected.id)}
+                    disabled={isPending}
+                  >✕ DELETE</button>
                 </div>
               </div>
 
+              {/* Price cards */}
               <div className="db-price-cards">
+                {/* Current price */}
                 <div className="db-price-card">
                   <div className="db-price-card-label">CURRENT PRICE</div>
-                  <div className="db-price-card-value" style={{ color: selected.current_price && selected.current_price <= selected.target_price ? "var(--success)" : "var(--text)" }}>
-                    {formatPrice(selected.current_price)}
+                  <div className="db-price-card-value">
+                    {selected._scraping && !selected.current_price
+                      ? <><Spinner size={16} /><span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: "var(--muted)" }}>fetching…</span></>
+                      : <span style={{ color: selected.current_price != null && selected.current_price <= selected.target_price ? "var(--success)" : "var(--text)" }}>
+                          {formatPrice(selected.current_price)}
+                        </span>
+                    }
                   </div>
-                  <div className="db-price-card-sub">last scraped</div>
+                  <div className="db-price-card-sub">
+                    {selected._scraping ? "scraping live price…" : "last scraped"}
+                  </div>
                 </div>
+
+                {/* Target */}
                 <div className="db-price-card">
                   <div className="db-price-card-label">YOUR TARGET</div>
                   <div className="db-price-card-value" style={{ color: "var(--accent)" }}>
                     {formatPrice(selected.target_price)}
                   </div>
                   <div className="db-price-card-sub">
-                    {selected.current_price
+                    {!selected._scraping && selected.current_price != null
                       ? selected.current_price > selected.target_price
                         ? `${formatPrice(selected.current_price - selected.target_price)} away`
                         : "✓ target reached"
-                      : "awaiting scrape"}
+                      : "set by you"
+                    }
                   </div>
                 </div>
+
+                {/* All-time low */}
                 <div className="db-price-card">
                   <div className="db-price-card-label">ALL-TIME LOW</div>
-                  <div className="db-price-card-value" style={{ color: "var(--success)" }}>{formatPrice(allTimeLow)}</div>
+                  <div className="db-price-card-value">
+                    {selected._scraping && allTimeLow === null
+                      ? <div className="db-skeleton" />
+                      : <span style={{ color: "var(--success)" }}>{formatPrice(allTimeLow)}</span>
+                    }
+                  </div>
                   <div className="db-price-card-sub">since tracking</div>
                 </div>
+
+                {/* All-time high */}
                 <div className="db-price-card">
                   <div className="db-price-card-label">ALL-TIME HIGH</div>
-                  <div className="db-price-card-value" style={{ color: "var(--accent2)" }}>{formatPrice(allTimeHigh)}</div>
+                  <div className="db-price-card-value">
+                    {selected._scraping && allTimeHigh === null
+                      ? <div className="db-skeleton" />
+                      : <span style={{ color: "var(--accent2)" }}>{formatPrice(allTimeHigh)}</span>
+                    }
+                  </div>
                   <div className="db-price-card-sub">since tracking</div>
                 </div>
               </div>
 
+              {/* Chart */}
               <div className="db-chart-section">
                 <div className="db-chart-header">
                   <div className="db-chart-title">PRICE HISTORY</div>
@@ -498,19 +742,39 @@ export default function DashboardClient({ profile, products, allHistory }: Props
                     </div>
                   </div>
                 </div>
-                {history.length === 0 ? (
-                  <div className="db-no-history">No price data yet — check back after the first scrape runs.</div>
+
+                {selected._scraping && history.length === 0 ? (
+                  <div className="db-no-history">
+                    <Spinner size={28} />
+                    <span>Scraping — price history will appear here shortly…</span>
+                  </div>
+                ) : history.length === 0 ? (
+                  <div className="db-no-history">No price data yet — check back after the next cron run.</div>
                 ) : (
                   <ResponsiveContainer width="100%" height={240}>
                     <LineChart data={history} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                      <XAxis dataKey="date" tick={{ fontFamily: "'DM Mono',monospace", fontSize: 10, fill: "#6b6b6b" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontFamily: "'DM Mono',monospace", fontSize: 10, fill: "#6b6b6b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}K`} width={50} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontFamily: "'DM Mono',monospace", fontSize: 10, fill: "#6b6b6b" }}
+                        axisLine={false} tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontFamily: "'DM Mono',monospace", fontSize: 10, fill: "#6b6b6b" }}
+                        axisLine={false} tickLine={false}
+                        tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}K`}
+                        width={50}
+                      />
                       <Tooltip content={<PriceTooltip />} />
-                      <ReferenceLine y={selected.target_price} stroke="#ff6b35" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.7}
+                      <ReferenceLine
+                        y={selected.target_price}
+                        stroke="#ff6b35" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.7}
                         label={{ value: "Target", fill: "#ff6b35", fontSize: 10, fontFamily: "'DM Mono',monospace", position: "insideTopRight" }}
                       />
-                      <Line type="monotone" dataKey="price" stroke="#e8ff47" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#e8ff47", strokeWidth: 0 }} />
+                      <Line
+                        type="monotone" dataKey="price" stroke="#e8ff47" strokeWidth={2}
+                        dot={false} activeDot={{ r: 4, fill: "#e8ff47", strokeWidth: 0 }}
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
@@ -520,12 +784,14 @@ export default function DashboardClient({ profile, products, allHistory }: Props
         </main>
       </div>
 
-      {/* ── Add Product Modal ── */}
+      {/* ── Add Modal ── */}
       {showAddModal && (
         <div className="db-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowAddModal(false)}>
           <div className="db-modal">
             <div className="db-modal-title">Track a product</div>
-            <div className="db-modal-sub">Paste a product URL from Amazon, Flipkart, or Myntra and set the price you want to be notified at.</div>
+            <div className="db-modal-sub">
+              Paste a product URL from Amazon, Flipkart, or Myntra. We&apos;ll fetch the current price straight away.
+            </div>
             {addError && <div className="db-error-msg">⚠ {addError}</div>}
             <form ref={formRef} onSubmit={handleAdd}>
               <div className="db-field">
@@ -541,31 +807,42 @@ export default function DashboardClient({ profile, products, allHistory }: Props
                 <input className="db-input" type="number" name="target_price" placeholder="e.g. 22000" min="1" step="1" required />
               </div>
               <div className="db-modal-actions">
-                <button type="button" className="db-btn-cancel" onClick={() => { setShowAddModal(false); setAddError(null); }}>CANCEL</button>
-                <button type="submit" className="db-btn-submit" disabled={isPending}>{isPending ? "ADDING..." : "START TRACKING →"}</button>
+                <button type="button" className="db-btn-cancel" onClick={() => { setShowAddModal(false); setAddError(null); }}>
+                  CANCEL
+                </button>
+                <button type="submit" className="db-btn-submit" disabled={isPending}>
+                  {isPending ? <><Spinner size={12} /> SAVING…</> : "START TRACKING →"}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ── Edit Target Price Modal ── */}
+      {/* ── Edit Target Modal ── */}
       {showEditModal && editProduct && (
         <div className="db-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowEditModal(false)}>
           <div className="db-modal">
             <div className="db-modal-title">Update target price</div>
             <div className="db-modal-sub">
-              Change the price at which you want to be notified for{" "}
+              Change the alert threshold for{" "}
               <span style={{ color: "var(--text)", fontWeight: 500 }}>{editProduct.name || "this product"}</span>.
             </div>
             <form onSubmit={handleEditSave}>
               <div className="db-field">
                 <label className="db-label">NEW TARGET PRICE (₹)</label>
-                <input className="db-input" type="number" name="target_price" defaultValue={editProduct.target_price} min="1" step="1" required autoFocus />
+                <input
+                  className="db-input" type="number" name="target_price"
+                  defaultValue={editProduct.target_price} min="1" step="1" required autoFocus
+                />
               </div>
               <div className="db-modal-actions">
-                <button type="button" className="db-btn-cancel" onClick={() => { setShowEditModal(false); setEditProduct(null); }}>CANCEL</button>
-                <button type="submit" className="db-btn-submit" disabled={isPending}>{isPending ? "SAVING..." : "SAVE →"}</button>
+                <button type="button" className="db-btn-cancel" onClick={() => { setShowEditModal(false); setEditProduct(null); }}>
+                  CANCEL
+                </button>
+                <button type="submit" className="db-btn-submit" disabled={isPending}>
+                  {isPending ? "SAVING…" : "SAVE →"}
+                </button>
               </div>
             </form>
           </div>
