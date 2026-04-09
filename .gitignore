@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Puppeteer cache
+.local-chromium/
+.cache/puppeteer/
+
+# Explicit env files (optional but cleaner)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Optional explicit PnP file
+.pnp.js
