@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["puppeteer", "puppeteer-core", "cheerio"],
+  serverExternalPackages: ["puppeteer", "puppeteer-core", "cheerio","@sparticuz/chromium"],
 
   async headers() {
     return [
