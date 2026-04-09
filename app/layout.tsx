@@ -31,11 +31,11 @@ export const metadata: Metadata = {
     template: "%s | Your Ultimate Price Comparison Companion",
   },
   icons: {
-    icon: "/logo.png",
+    icon: "/public/logo3.png",
   },
   openGraph: {
-    title: "PriceHound | Everything You Need to Know About Your Purchases",
-    description: "Your Ultimate Price Comparison Companion",
+    title: "PriceHound | Your Ultimate Price Comparison Companion",
+    description: "Track prices, compare products, and never overpay again with PriceHound.",
     url: "https://pricehoundz.vercel.app",
     siteName: "PriceHound",
     images: [
@@ -51,10 +51,9 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "PriceHound | Your Ultimate Price Comparison Companion",
-    description: "Your Ultimate Price Comparison Companion",
+    description: "Track prices, compare products, and never overpay again with PriceHound.",
     images: ["https://pricehoundz.vercel.app/logo.png"],
   },
-  // description: "Your Brand, Your Story, Your Sales. All in One Link",
 };
 
 export default function RootLayout({
