@@ -11,7 +11,7 @@
     "test-scrape": "npx tsx scripts/test-scrape.ts"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^143.0.4",
+    "@sparticuz/chromium-min": "^143.0.4",
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.102.1",
     "cheerio": "^1.2.0",
