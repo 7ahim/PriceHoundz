@@ -1,12 +1,12 @@
 {
-  "name": "price_tracker",
+  "name": "pricehound",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "next lint",
     "gen-secret": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
     "test-scrape": "npx tsx scripts/test-scrape.ts"
   },

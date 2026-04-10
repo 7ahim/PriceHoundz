@@ -275,16 +275,8 @@ export default function DashboardClient({
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
-        *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-        :root {
-          --bg:#0a0a0a; --bg2:#111111; --bg3:#181818;
-          --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.14);
-          --accent:#e8ff47; --accent2:#ff6b35;
-          --text:#f0ede8; --muted:#6b6b6b; --muted2:#9a9a9a;
-          --success:#6ee7b7; --danger:#f87171;
-        }
-        body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
+        /* ── DashboardClient layout styles only ─────────────────
+           Global vars + fonts are injected by ThemeProvider.     */
 
         @keyframes ph-spin    { to { transform:rotate(360deg); } }
         @keyframes ph-pulse   { 0%,100%{opacity:1} 50%{opacity:0.45} }
@@ -292,16 +284,17 @@ export default function DashboardClient({
         @keyframes modalIn    { from{opacity:0;transform:scale(0.97) translateY(8px)} to{opacity:1;transform:none} }
         @keyframes slideInTop { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
 
-        .db-wrap { display:flex; min-height:100vh; width:100%; }
+        .db-wrap { display:flex; min-height:calc(100vh - 52px); overflow-x:hidden; }
 
         /* ── Sidebar ── */
         .db-sidebar {
           width:260px; min-width:260px; background:var(--bg2);
           border-right:1px solid var(--border);
           display:flex; flex-direction:column;
-          position:sticky; top:0; height:100vh; overflow-y:auto;
+          position:sticky; top:0; height:calc(100vh - 52px); overflow-y:auto;
+          transition:background 0.25s, border-color 0.25s;
         }
-        .db-sidebar-top { padding:24px 20px 16px; border-bottom:1px solid var(--border); }
+        .db-sidebar-top { padding:16px 20px; border-bottom:1px solid var(--border); }
         .db-logo {
           font-family:'Syne',sans-serif; font-weight:800; font-size:18px;
           display:flex; align-items:center; gap:8px;
@@ -353,14 +346,14 @@ export default function DashboardClient({
         .db-signout-btn:hover { color:var(--danger); }
 
         /* ── Main ── */
-        .db-main { flex:1; overflow-y:auto; padding:32px; }
+        .db-main { flex:1; min-width:0; padding:28px; overflow-x:hidden; }
         .db-topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
         .db-topbar-title { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; }
         .db-topbar-right { display:flex; align-items:center; gap:10px; }
 
         /* ── Stats ── */
         .db-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:28px; }
-        .db-stat-card  { background:var(--bg2); border:1px solid var(--border); padding:16px 18px; }
+        .db-stat-card  { background:var(--bg2); border:1px solid var(--border); padding:16px 18px; transition:background 0.25s,border-color 0.25s; }
         .db-stat-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:0.1em; margin-bottom:8px; }
         .db-stat-value { font-family:'Syne',sans-serif; font-weight:700; font-size:24px; letter-spacing:-1px; }
         .db-stat-sub   { font-size:11px; color:var(--muted); margin-top:4px; }
@@ -418,7 +411,7 @@ export default function DashboardClient({
         }
 
         /* ── Chart ── */
-        .db-chart-section { background:var(--bg2); border:1px solid var(--border); padding:20px; margin-bottom:24px; }
+        .db-chart-section { background:var(--bg2); border:1px solid var(--border); padding:20px; margin-bottom:24px; transition:background 0.25s,border-color 0.25s; }
         .db-chart-header  { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
         .db-chart-title   { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; }
         .db-chart-legend  { display:flex; gap:16px; }
@@ -468,9 +461,6 @@ export default function DashboardClient({
         {/* ── Sidebar ── */}
         <aside className="db-sidebar">
           <div className="db-sidebar-top">
-            <a href="/" className="db-logo">
-              <div className="db-logo-dot" /> PriceHound
-            </a>
             <button className="db-add-btn" onClick={() => setShowAddModal(true)}>
               + TRACK NEW PRODUCT
             </button>
@@ -531,14 +521,12 @@ export default function DashboardClient({
 
         {/* ── Main content ── */}
         <main className="db-main">
-          <div className="db-topbar">
-            <div className="db-topbar-title">Dashboard</div>
-            <div className="db-topbar-right">
-              <TourTriggerButton onClick={() => {
-                localStorage.removeItem("pricehound_tour_seen");
-                setForceTour(true);
-              }} />
-            </div>
+          {/* Guide button — top right corner */}
+          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:20 }}>
+            <TourTriggerButton onClick={() => {
+              localStorage.removeItem("pricehound_tour_seen");
+              setForceTour(true);
+            }} />
           </div>
 
           {/* Scraping in-progress banner */}
