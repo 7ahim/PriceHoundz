@@ -1,7 +1,7 @@
 // lib/scrapers/index.ts
 // Routes a product URL to the correct platform scraper.
-// Includes exponential-backoff retry logic so transient failures
-// (network blip, temporary bot wall) don't permanently stop tracking.
+// Amazon uses its own 4-strategy cascade internally, so we only
+// retry here for non-Amazon platforms or genuine network failures.
 
 import { scrapeAmazon }   from "./amazon";
 import { scrapeFlipkart } from "./flipkart";
@@ -11,27 +11,31 @@ import type { ScrapeResult } from "./base";
 
 export type { ScrapeResult };
 
-const RETRY_DELAYS_MS = [0, 3_000, 8_000]; // immediate → 3 s → 8 s
+// Retry config per platform
+// Amazon handles its own retries internally (4 strategies), so we
+// don't add outer retries on top — it just wastes function runtime.
+const RETRY_CONFIG: Record<string, number[]> = {
+  amazon:   [0],              // Amazon retries internally
+  flipkart: [0, 5_000],       // 2 attempts, 5 s apart
+  myntra:   [0, 6_000],       // 2 attempts, 6 s apart
+  other:    [0, 4_000, 10_000], // 3 attempts
+};
 
-async function sleep(ms: number) {
+function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 export async function scrapeProduct(url: string): Promise<ScrapeResult> {
   const platform = detectPlatform(url);
+  const delays   = RETRY_CONFIG[platform] ?? RETRY_CONFIG.other;
 
   let lastResult: ScrapeResult = {
-    price: null,
-    name: null,
-    imageUrl: null,
-    available: false,
-    error: "Never attempted",
+    price: null, name: null, imageUrl: null,
+    available: false, error: "Never attempted",
   };
 
-  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
-    if (RETRY_DELAYS_MS[attempt] > 0) {
-      await sleep(RETRY_DELAYS_MS[attempt]);
-    }
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) await sleep(delays[attempt]);
 
     try {
       switch (platform) {
@@ -45,38 +49,40 @@ export async function scrapeProduct(url: string): Promise<ScrapeResult> {
           lastResult = await scrapeMyntra(url);
           break;
         default:
-          // Generic fallback — best-effort Cheerio fetch, no JS rendering
           lastResult = await scrapeGeneric(url);
       }
     } catch (err: any) {
       lastResult = {
         price: null, name: null, imageUrl: null,
-        available: false,
-        error: err?.message ?? "Unknown error",
+        available: false, error: err?.message ?? "Unknown error",
       };
     }
 
-    // If we got a price, no need to retry
+    // Success — done
     if (lastResult.price !== null && lastResult.price > 0) {
       return lastResult;
     }
 
-    // Don't retry on hard blocks (CAPTCHA/403) — backing off won't help immediately
-    if (lastResult.error === "CAPTCHA" || lastResult.error === "BLOCKED") {
+    // For non-Amazon platforms, a hard block means stop retrying
+    if (
+      platform !== "amazon" &&
+      (lastResult.error === "CAPTCHA" || lastResult.error === "BLOCKED")
+    ) {
       console.warn(`[scraper] Hard block on ${url}: ${lastResult.error}`);
       return lastResult;
     }
 
-    console.warn(
-      `[scraper] Attempt ${attempt + 1} failed for ${url}: ${lastResult.error ?? "no price found"}`
-    );
+    if (attempt < delays.length - 1) {
+      console.warn(
+        `[scraper] Attempt ${attempt + 1}/${delays.length} failed for ${url}: ${lastResult.error ?? "no price"}`
+      );
+    }
   }
 
   return lastResult;
 }
 
-// ── Generic scraper (no JS rendering) ────────────────────────
-// Used for platforms we haven't built a dedicated scraper for yet.
+// ── Generic scraper — JSON-LD + meta tags, no browser ────────
 async function scrapeGeneric(url: string): Promise<ScrapeResult> {
   try {
     const { load } = await import("cheerio");
@@ -86,6 +92,7 @@ async function scrapeGeneric(url: string): Promise<ScrapeResult> {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
         "Accept-Language": "en-IN,en;q=0.9",
       },
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!res.ok) {
@@ -93,30 +100,28 @@ async function scrapeGeneric(url: string): Promise<ScrapeResult> {
     }
 
     const html = await res.text();
-    const $ = load(html);
+    const $    = load(html);
 
-    // Look for common microdata / JSON-LD price patterns
     let price: number | null = null;
-    let name: string | null  = null;
+    let name:  string | null = null;
 
-    // JSON-LD structured data (schema.org/Product)
+    // JSON-LD structured data
     $('script[type="application/ld+json"]').each((_, el) => {
+      if (price) return;
       try {
-        const data = JSON.parse($(el).html() ?? "");
+        const data  = JSON.parse($(el).html() ?? "");
         const offer = data?.offers ?? data?.offer;
-        if (offer?.price) {
-          price = parseFloat(String(offer.price));
-        }
-        if (data?.name) name = String(data.name).slice(0, 200);
+        if (offer?.price) price = parseFloat(String(offer.price));
+        if (data?.name)   name  = String(data.name).slice(0, 200);
       } catch {}
     });
 
-    // Meta tags fallback
+    // Meta tag fallback
     if (!price) {
-      const metaPrice =
+      const mp =
         $('meta[property="product:price:amount"]').attr("content") ||
         $('meta[itemprop="price"]').attr("content");
-      if (metaPrice) price = parseFloat(metaPrice);
+      if (mp) price = parseFloat(mp);
     }
 
     if (!name) {
@@ -126,11 +131,10 @@ async function scrapeGeneric(url: string): Promise<ScrapeResult> {
         null;
     }
 
-    const imageUrl =
-      $('meta[property="og:image"]').attr("content") || null;
+    const imageUrl = $('meta[property="og:image"]').attr("content") || null;
 
     return {
-      price: price && price > 0 ? price : null,
+      price:     price && price > 0 ? price : null,
       name,
       imageUrl,
       available: price !== null,
