@@ -284,174 +284,252 @@ export default function DashboardClient({
         @keyframes modalIn    { from{opacity:0;transform:scale(0.97) translateY(8px)} to{opacity:1;transform:none} }
         @keyframes slideInTop { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
 
-        .db-wrap { display:flex; min-height:calc(100vh - 52px); overflow-x:hidden; }
+        /* ── Outer wrapper fills the viewport below the nav ── */
+        .db-wrap {
+          display: flex;
+          height: calc(100vh - 52px);
+          overflow: hidden;           /* critical — stops outer scroll */
+          background: var(--bg);
+        }
 
-        /* ── Sidebar ── */
+        /* ── Sidebar — fixed in place, never scrolls with page ── */
         .db-sidebar {
-          width:260px; min-width:260px; background:var(--bg2);
-          border-right:1px solid var(--border);
-          display:flex; flex-direction:column;
-          position:sticky; top:0; height:calc(100vh - 52px); overflow-y:auto;
-          transition:background 0.25s, border-color 0.25s;
+          width: 260px;
+          min-width: 260px;
+          flex-shrink: 0;
+          height: 100%;               /* fills db-wrap exactly */
+          display: flex;
+          flex-direction: column;
+          background: var(--bg2);
+          border-right: 1px solid var(--border);
+          transition: background 0.25s, border-color 0.25s;
+          /* No overflow here — children manage their own scroll */
         }
-        .db-sidebar-top { padding:16px 20px; border-bottom:1px solid var(--border); }
-        .db-logo {
-          font-family:'Syne',sans-serif; font-weight:800; font-size:18px;
-          display:flex; align-items:center; gap:8px;
-          color:var(--text); text-decoration:none; margin-bottom:20px;
-        }
-        .db-logo-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; }
-        .db-add-btn {
-          width:100%; background:var(--accent); color:#0a0a0a;
-          border:none; cursor:pointer;
-          font-family:'DM Mono',monospace; font-size:11px; font-weight:500;
-          padding:10px 16px; letter-spacing:0.08em;
-          display:flex; align-items:center; justify-content:center; gap:8px;
-          transition:background 0.2s, transform 0.15s;
-        }
-        .db-add-btn:hover { background:#d4eb30; transform:translateY(-1px); }
-        .db-sidebar-label {
-          padding:16px 20px 8px;
-          font-family:'DM Mono',monospace; font-size:10px;
-          color:var(--muted); letter-spacing:0.12em; text-transform:uppercase;
-        }
-        .db-product-list { flex:1; overflow-y:auto; padding:0 12px 12px; }
-        .db-product-item {
-          padding:10px; border:1px solid transparent; border-radius:4px;
-          cursor:pointer; transition:all 0.15s; margin-bottom:4px; position:relative;
-        }
-        .db-product-item:hover  { background:rgba(255,255,255,0.03); border-color:var(--border); }
-        .db-product-item.active { background:rgba(232,255,71,0.05); border-color:rgba(232,255,71,0.2); }
-        .db-product-item-name {
-          font-size:12px; font-weight:500; color:var(--text); margin-bottom:4px;
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:185px;
-        }
-        .db-product-item-meta  { display:flex; align-items:center; gap:6px; }
-        .db-platform-dot       { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
-        .db-product-item-price { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted2); }
-        .db-product-item-status { position:absolute; top:10px; right:10px; width:6px; height:6px; border-radius:50%; }
-        .db-sidebar-bottom { padding:16px 20px; border-top:1px solid var(--border); }
-        .db-user { display:flex; align-items:center; gap:10px; }
-        .db-avatar {
-          width:32px; height:32px; border-radius:50%;
-          background:rgba(232,255,71,0.1); border:1px solid rgba(232,255,71,0.2);
-          display:flex; align-items:center; justify-content:center;
-          font-family:'DM Mono',monospace; font-size:11px; font-weight:500;
-          color:var(--accent); flex-shrink:0;
-        }
-        .db-user-info  { flex:1; overflow:hidden; }
-        .db-user-name  { font-size:12px; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .db-user-email { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .db-signout-btn { background:none; border:none; cursor:pointer; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); padding:4px; transition:color 0.2s; }
-        .db-signout-btn:hover { color:var(--danger); }
 
-        /* ── Main ── */
-        .db-main { flex:1; min-width:0; padding:28px; overflow-x:hidden; }
-        .db-topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
-        .db-topbar-title { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; }
-        .db-topbar-right { display:flex; align-items:center; gap:10px; }
+        .db-sidebar-top {
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border);
+          flex-shrink: 0;             /* never shrinks — always visible */
+        }
+
+        .db-sidebar-label {
+          padding: 16px 20px 8px;
+          font-family: 'DM Mono', monospace; font-size: 10px;
+          color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase;
+          flex-shrink: 0;
+        }
+
+        /* ── Product list — the ONLY scrolling part of the sidebar ── */
+        .db-product-list {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding: 0 12px 12px;
+          /* Custom scrollbar */
+          scrollbar-width: thin;
+          scrollbar-color: var(--scrollbar-thumb) transparent;
+        }
+        .db-product-list::-webkit-scrollbar { width: 4px; }
+        .db-product-list::-webkit-scrollbar-track { background: transparent; }
+        .db-product-list::-webkit-scrollbar-thumb {
+          background: var(--scrollbar-thumb);
+          border-radius: 4px;
+        }
+        .db-product-list::-webkit-scrollbar-thumb:hover {
+          background: var(--scrollbar-thumb-hover);
+        }
+
+        .db-sidebar-bottom {
+          padding: 16px 20px;
+          border-top: 1px solid var(--border);
+          flex-shrink: 0;             /* always visible at bottom of sidebar */
+          background: var(--bg2);
+          transition: background 0.25s, border-color 0.25s;
+        }
+
+        /* ── Main content — scrolls independently of sidebar ── */
+        .db-main {
+          flex: 1;
+          min-width: 0;
+          height: 100%;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding: 28px;
+          /* Custom scrollbar */
+          scrollbar-width: thin;
+          scrollbar-color: var(--scrollbar-thumb) transparent;
+        }
+        .db-main::-webkit-scrollbar { width: 4px; }
+        .db-main::-webkit-scrollbar-track { background: transparent; }
+        .db-main::-webkit-scrollbar-thumb {
+          background: var(--scrollbar-thumb);
+          border-radius: 4px;
+        }
+        .db-main::-webkit-scrollbar-thumb:hover {
+          background: var(--scrollbar-thumb-hover);
+        }
+
+        /* ── Product list items ── */
+        .db-add-btn {
+          width: 100%; background: var(--accent); color: #0a0a0a;
+          border: none; cursor: pointer;
+          font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500;
+          padding: 10px 16px; letter-spacing: 0.08em;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          transition: background 0.2s, transform 0.15s;
+        }
+        .db-add-btn:hover { background: #d4eb30; transform: translateY(-1px); }
+
+        .db-product-item {
+          padding: 10px; border: 1px solid transparent; border-radius: 4px;
+          cursor: pointer; transition: all 0.15s; margin-bottom: 4px; position: relative;
+        }
+        .db-product-item:hover  { background: rgba(255,255,255,0.03); border-color: var(--border); }
+        .db-product-item.active { background: rgba(232,255,71,0.05); border-color: rgba(232,255,71,0.2); }
+        .db-product-item-name {
+          font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 4px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 185px;
+        }
+        .db-product-item-meta  { display: flex; align-items: center; gap: 6px; }
+        .db-platform-dot       { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+        .db-product-item-price { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted2); }
+        .db-product-item-status {
+          position: absolute; top: 10px; right: 10px;
+          width: 6px; height: 6px; border-radius: 50%;
+        }
+
+        /* ── User section ── */
+        .db-user       { display: flex; align-items: center; gap: 10px; }
+        .db-avatar {
+          width: 32px; height: 32px; border-radius: 50%;
+          background: rgba(232,255,71,0.1); border: 1px solid rgba(232,255,71,0.2);
+          display: flex; align-items: center; justify-content: center;
+          font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500;
+          color: var(--accent); flex-shrink: 0;
+        }
+        .db-user-info  { flex: 1; overflow: hidden; }
+        .db-user-name  { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .db-user-email { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .db-signout-btn {
+          background: none; border: none; cursor: pointer;
+          font-family: 'DM Mono', monospace; font-size: 10px;
+          color: var(--muted); padding: 4px; transition: color 0.2s;
+        }
+        .db-signout-btn:hover { color: var(--danger); }
+
+        /* ── Guide button row ── */
+        .db-guide-row {
+          display: flex; justify-content: flex-end; margin-bottom: 20px;
+        }
 
         /* ── Stats ── */
-        .db-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:28px; }
-        .db-stat-card  { background:var(--bg2); border:1px solid var(--border); padding:16px 18px; transition:background 0.25s,border-color 0.25s; }
-        .db-stat-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:0.1em; margin-bottom:8px; }
-        .db-stat-value { font-family:'Syne',sans-serif; font-weight:700; font-size:24px; letter-spacing:-1px; }
-        .db-stat-sub   { font-size:11px; color:var(--muted); margin-top:4px; }
+        .db-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 28px; }
+        .db-stat-card  { background: var(--bg2); border: 1px solid var(--border); padding: 16px 18px; transition: background 0.25s, border-color 0.25s; }
+        .db-stat-label { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 8px; }
+        .db-stat-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -1px; color: var(--text); }
+        .db-stat-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
         /* ── Banners ── */
         .db-scrape-banner {
-          display:flex; align-items:center; gap:12px;
-          background:rgba(232,255,71,0.05); border:1px solid rgba(232,255,71,0.2);
-          padding:12px 16px; margin-bottom:20px;
-          font-family:'DM Mono',monospace; font-size:12px; color:var(--accent);
-          animation:slideInTop 0.25s ease, ph-pulse 1.8s ease-in-out 0.25s infinite;
+          display: flex; align-items: center; gap: 12px;
+          background: rgba(232,255,71,0.05); border: 1px solid rgba(232,255,71,0.2);
+          padding: 12px 16px; margin-bottom: 20px;
+          font-family: 'DM Mono', monospace; font-size: 12px; color: var(--accent);
+          animation: slideInTop 0.25s ease, ph-pulse 1.8s ease-in-out 0.25s infinite;
         }
         .db-scrape-error {
-          display:flex; align-items:center; gap:10px;
-          background:rgba(248,113,113,0.07); border:1px solid rgba(248,113,113,0.25);
-          padding:12px 16px; margin-bottom:20px;
-          font-family:'DM Mono',monospace; font-size:12px; color:var(--danger);
-          animation:slideInTop 0.2s ease;
+          display: flex; align-items: center; gap: 10px;
+          background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.25);
+          padding: 12px 16px; margin-bottom: 20px;
+          font-family: 'DM Mono', monospace; font-size: 12px; color: var(--danger);
+          animation: slideInTop 0.2s ease;
         }
 
         /* ── Empty state ── */
-        .db-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:80px 32px; text-align:center; }
-        .db-empty-icon  { width:64px; height:64px; border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-size:28px; }
-        .db-empty-title { font-family:'Syne',sans-serif; font-weight:700; font-size:22px; letter-spacing:-0.5px; }
-        .db-empty-sub   { font-size:14px; color:var(--muted2); font-weight:300; max-width:320px; line-height:1.6; }
+        .db-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 80px 32px; text-align: center; }
+        .db-empty-icon  { width: 64px; height: 64px; border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 28px; }
+        .db-empty-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: -0.5px; color: var(--text); }
+        .db-empty-sub   { font-size: 14px; color: var(--muted2); font-weight: 300; max-width: 320px; line-height: 1.6; }
 
         /* ── Detail ── */
-        .db-detail-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
-        .db-detail-name   { font-family:'Syne',sans-serif; font-weight:700; font-size:clamp(18px,2vw,26px); letter-spacing:-0.5px; line-height:1.2; }
-        .db-detail-actions { display:flex; gap:8px; flex-shrink:0; flex-wrap:wrap; }
+        .db-detail-header   { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .db-detail-name     { font-family: 'Syne', sans-serif; font-weight: 700; font-size: clamp(18px,2vw,26px); letter-spacing: -0.5px; line-height: 1.2; color: var(--text); }
+        .db-detail-actions  { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
         .db-icon-btn {
-          background:var(--bg2); border:1px solid var(--border2); color:var(--muted2); cursor:pointer;
-          padding:8px 12px; font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.05em;
-          transition:all 0.2s; display:flex; align-items:center; gap:6px;
+          background: var(--bg2); border: 1px solid var(--border2); color: var(--muted2); cursor: pointer;
+          padding: 8px 12px; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.05em;
+          transition: all 0.2s; display: flex; align-items: center; gap: 6px;
         }
-        .db-icon-btn:hover        { border-color:rgba(255,255,255,0.25); color:var(--text); }
-        .db-icon-btn.danger:hover { border-color:var(--danger); color:var(--danger); }
-        .db-icon-btn.accent       { border-color:rgba(232,255,71,0.3); color:var(--accent); }
-        .db-icon-btn.accent:hover { background:rgba(232,255,71,0.05); }
-        .db-icon-btn:disabled     { opacity:0.4; cursor:not-allowed; pointer-events:none; }
+        .db-icon-btn:hover        { border-color: rgba(255,255,255,0.25); color: var(--text); }
+        .db-icon-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+        .db-icon-btn.accent       { border-color: rgba(232,255,71,0.3); color: var(--accent); }
+        .db-icon-btn.accent:hover { background: rgba(232,255,71,0.05); }
+        .db-icon-btn:disabled     { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
         /* ── Price cards ── */
-        .db-price-cards     { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
-        .db-price-card      { background:var(--bg2); border:1px solid var(--border); padding:14px 16px; position:relative; overflow:hidden; }
-        .db-price-card-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:0.1em; margin-bottom:8px; }
-        .db-price-card-value { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; min-height:28px; display:flex; align-items:center; gap:8px; }
-        .db-price-card-sub  { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); margin-top:4px; }
+        .db-price-cards      { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 24px; }
+        .db-price-card       { background: var(--bg2); border: 1px solid var(--border); padding: 14px 16px; position: relative; overflow: hidden; transition: background 0.25s, border-color 0.25s; }
+        .db-price-card-label { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 8px; }
+        .db-price-card-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -0.5px; min-height: 28px; display: flex; align-items: center; gap: 8px; }
+        .db-price-card-sub   { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 4px; }
 
-        /* shimmer skeleton */
         .db-skeleton {
-          height:24px; width:80px; border-radius:2px;
-          background:linear-gradient(90deg, var(--bg3) 25%, rgba(255,255,255,0.05) 50%, var(--bg3) 75%);
-          background-size:200% 100%;
-          animation:shimmer 1.3s infinite;
+          height: 24px; width: 80px; border-radius: 2px;
+          background: linear-gradient(90deg, var(--bg3) 25%, rgba(255,255,255,0.05) 50%, var(--bg3) 75%);
+          background-size: 200% 100%;
+          animation: shimmer 1.3s infinite;
         }
 
         /* ── Chart ── */
-        .db-chart-section { background:var(--bg2); border:1px solid var(--border); padding:20px; margin-bottom:24px; transition:background 0.25s,border-color 0.25s; }
-        .db-chart-header  { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-        .db-chart-title   { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; }
-        .db-chart-legend  { display:flex; gap:16px; }
-        .db-chart-legend-item { display:flex; align-items:center; gap:6px; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); }
-        .db-chart-legend-line { width:20px; height:2px; }
-        .db-no-history { height:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); }
+        .db-chart-section { background: var(--bg2); border: 1px solid var(--border); padding: 20px; margin-bottom: 24px; transition: background 0.25s, border-color 0.25s; }
+        .db-chart-header  { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .db-chart-title   { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+        .db-chart-legend  { display: flex; gap: 16px; }
+        .db-chart-legend-item { display: flex; align-items: center; gap: 6px; font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
+        .db-chart-legend-line { width: 20px; height: 2px; }
+        .db-no-history { height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
 
         /* ── Badges ── */
-        .db-badge        { display:inline-flex; align-items:center; gap:5px; font-family:'DM Mono',monospace; font-size:10px; padding:3px 8px; border:1px solid var(--border); color:var(--muted2); }
-        .db-status-badge { display:inline-flex; align-items:center; gap:5px; font-family:'DM Mono',monospace; font-size:10px; padding:3px 10px; }
-        .db-status-active  { background:rgba(110,231,183,0.08); color:var(--success); border:1px solid rgba(110,231,183,0.2); }
-        .db-status-paused  { background:rgba(107,107,107,0.08); color:var(--muted2); border:1px solid var(--border); }
-        .db-status-hit     { background:rgba(232,255,71,0.08); color:var(--accent); border:1px solid rgba(232,255,71,0.2); }
-        .db-status-loading { background:rgba(232,255,71,0.05); color:var(--accent); border:1px solid rgba(232,255,71,0.15); animation:ph-pulse 1.5s ease-in-out infinite; }
+        .db-badge        { display: inline-flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; font-size: 10px; padding: 3px 8px; border: 1px solid var(--border); color: var(--muted2); }
+        .db-status-badge { display: inline-flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; font-size: 10px; padding: 3px 10px; }
+        .db-status-active  { background: rgba(110,231,183,0.08); color: var(--success); border: 1px solid rgba(110,231,183,0.2); }
+        .db-status-paused  { background: rgba(107,107,107,0.08); color: var(--muted2); border: 1px solid var(--border); }
+        .db-status-hit     { background: rgba(232,255,71,0.08); color: var(--accent); border: 1px solid rgba(232,255,71,0.2); }
+        .db-status-loading { background: rgba(232,255,71,0.05); color: var(--accent); border: 1px solid rgba(232,255,71,0.15); animation: ph-pulse 1.5s ease-in-out infinite; }
 
         /* ── Modal ── */
         .db-modal-overlay {
-          position:fixed; inset:0; background:rgba(0,0,0,0.75);
-          backdrop-filter:blur(4px);
-          display:flex; align-items:center; justify-content:center;
-          z-index:500; padding:24px;
+          position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+          backdrop-filter: blur(4px);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 500; padding: 24px;
         }
-        .db-modal        { background:var(--bg2); border:1px solid var(--border2); padding:32px; width:100%; max-width:480px; animation:modalIn 0.2s ease; }
-        .db-modal-title  { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; margin-bottom:6px; }
-        .db-modal-sub    { font-size:13px; color:var(--muted2); margin-bottom:28px; font-weight:300; line-height:1.5; }
-        .db-field        { margin-bottom:18px; }
-        .db-label        { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted2); letter-spacing:0.08em; display:block; margin-bottom:8px; }
-        .db-input        { width:100%; background:var(--bg3); border:1px solid var(--border2); color:var(--text); padding:11px 14px; font-family:'DM Mono',monospace; font-size:13px; outline:none; transition:border-color 0.2s; }
-        .db-input:focus  { border-color:rgba(232,255,71,0.4); }
-        .db-input::placeholder { color:var(--muted); }
-        .db-modal-actions { display:flex; gap:10px; margin-top:24px; }
-        .db-btn-submit   { flex:1; background:var(--accent); color:#0a0a0a; border:none; cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; padding:12px; letter-spacing:0.08em; transition:background 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
-        .db-btn-submit:disabled { opacity:0.5; cursor:not-allowed; }
-        .db-btn-submit:hover:not(:disabled) { background:#d4eb30; }
-        .db-btn-cancel   { background:transparent; color:var(--muted2); border:1px solid var(--border2); cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; padding:12px 20px; letter-spacing:0.08em; transition:all 0.2s; }
-        .db-btn-cancel:hover { color:var(--text); border-color:rgba(255,255,255,0.25); }
-        .db-error-msg    { background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3); color:var(--danger); font-family:'DM Mono',monospace; font-size:11px; padding:10px 14px; margin-bottom:16px; }
+        .db-modal        { background: var(--bg2); border: 1px solid var(--border2); padding: 32px; width: 100%; max-width: 480px; animation: modalIn 0.2s ease; }
+        .db-modal-title  { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -0.5px; margin-bottom: 6px; color: var(--text); }
+        .db-modal-sub    { font-size: 13px; color: var(--muted2); margin-bottom: 28px; font-weight: 300; line-height: 1.5; }
+        .db-field        { margin-bottom: 18px; }
+        .db-label        { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted2); letter-spacing: 0.08em; display: block; margin-bottom: 8px; }
+        .db-input        { width: 100%; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); padding: 11px 14px; font-family: 'DM Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s; }
+        .db-input:focus  { border-color: rgba(232,255,71,0.4); }
+        .db-input::placeholder { color: var(--muted); }
+        .db-modal-actions { display: flex; gap: 10px; margin-top: 24px; }
+        .db-btn-submit   { flex: 1; background: var(--accent); color: #0a0a0a; border: none; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; padding: 12px; letter-spacing: 0.08em; transition: background 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .db-btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        .db-btn-submit:hover:not(:disabled) { background: #d4eb30; }
+        .db-btn-cancel   { background: transparent; color: var(--muted2); border: 1px solid var(--border2); cursor: pointer; font-family: 'DM Mono', monospace; font-size: 12px; padding: 12px 20px; letter-spacing: 0.08em; transition: all 0.2s; }
+        .db-btn-cancel:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+        .db-error-msg    { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); color: var(--danger); font-family: 'DM Mono', monospace; font-size: 11px; padding: 10px 14px; margin-bottom: 16px; }
 
-        @media(max-width:1100px) { .db-stats,.db-price-cards { grid-template-columns:repeat(2,1fr); } }
-        @media(max-width:768px)  { .db-sidebar{display:none;} .db-main{padding:20px;} }
+        /* ── Responsive ── */
+        @media (max-width: 1100px) {
+          .db-stats, .db-price-cards { grid-template-columns: repeat(2,1fr); }
+        }
+        @media (max-width: 768px) {
+          .db-sidebar { display: none; }
+          .db-main    { padding: 20px; }
+          .db-wrap    { height: auto; }
+          .db-main    { height: auto; overflow-y: visible; }
+        }
       `}</style>
 
       <OnboardingTour forceStart={forceTour} onFinish={() => setForceTour(false)} />
@@ -521,8 +599,8 @@ export default function DashboardClient({
 
         {/* ── Main content ── */}
         <main className="db-main">
-          {/* Guide button — top right corner */}
-          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:20 }}>
+          {/* Guide button */}
+          <div className="db-guide-row">
             <TourTriggerButton onClick={() => {
               localStorage.removeItem("pricehound_tour_seen");
               setForceTour(true);

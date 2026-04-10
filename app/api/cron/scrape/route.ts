@@ -1,12 +1,12 @@
 // app/api/cron/scrape/route.ts
 // GET /api/cron/scrape
 //
-// Scheduled by vercel.json — runs every 4 hours.
+// Scheduled by vercel.json — runs every 24 hours.
 // Also callable manually: GET /api/cron/scrape
 // with header: Authorization: Bearer <CRON_SECRET>
 //
 // vercel.json:
-// { "crons": [{ "path": "/api/cron/scrape", "schedule": "0 */4 * * *" }] }
+// { "crons": [{ "path": "/api/cron/scrape", "schedule": "0 0 * * *" }] }
 
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
