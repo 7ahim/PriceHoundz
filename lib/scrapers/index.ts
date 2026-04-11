@@ -12,13 +12,13 @@ import type { ScrapeResult } from "./base";
 export type { ScrapeResult };
 
 // Retry config per platform
-// Amazon + Flipkart handle their own retries internally (4 strategies each),
-// so we don't stack extra outer retries on top.
+// Amazon, Flipkart, and Myntra all handle their own multi-strategy
+// retries internally. No outer retries needed — they just waste runtime.
 const RETRY_CONFIG: Record<string, number[]> = {
-  amazon:   [0],              // Amazon retries internally
-  flipkart: [0],              // Flipkart retries internally
-  myntra:   [0, 6_000],       // 2 attempts, 6 s apart
-  other:    [0, 4_000, 10_000], // 3 attempts
+  amazon:   [0],
+  flipkart: [0],
+  myntra:   [0],
+  other:    [0, 4_000, 10_000],
 };
 
 function sleep(ms: number) {
@@ -63,9 +63,9 @@ export async function scrapeProduct(url: string): Promise<ScrapeResult> {
       return lastResult;
     }
 
-    // For non-Amazon/Flipkart platforms, a hard block means stop retrying
+    // For generic platforms, a hard block means stop retrying
     if (
-      platform !== "amazon" && platform !== "flipkart" &&
+      platform !== "amazon" && platform !== "flipkart" && platform !== "myntra" &&
       (lastResult.error === "CAPTCHA" || lastResult.error === "BLOCKED")
     ) {
       console.warn(`[scraper] Hard block on ${url}: ${lastResult.error}`);
