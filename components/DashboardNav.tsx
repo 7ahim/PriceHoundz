@@ -30,15 +30,15 @@ const DARK_VARS = `
 `;
 
 const LIGHT_VARS = `
-  --bg:#f5f5f0; --bg2:#ffffff; --bg3:#f0eff8;
-  --border:rgba(0,0,0,0.08); --border2:rgba(0,0,0,0.14);
-  --accent:#5c8a00; --accent2:#c4430a;
-  --text:#1a1a1a; --muted:#8a8a8a; --muted2:#5a5a5a;
+  --bg:#f4f3ef; --bg2:#ffffff; --bg3:#eeede9;
+  --border:rgba(0,0,0,0.09); --border2:rgba(0,0,0,0.18);
+  --accent:#4a7400; --accent2:#c4430a;
+  --text:#1a1a1a; --muted:#777777; --muted2:#444444;
   --success:#0a6640; --danger:#c0392b;
-  --nav-bg:rgba(245,245,240,0.96);
+  --nav-bg:rgba(244,243,239,0.96);
   --card:#ffffff;
-  --scrollbar-thumb:rgba(0,0,0,0.15);
-  --scrollbar-thumb-hover:rgba(0,0,0,0.28);
+  --scrollbar-thumb:rgba(0,0,0,0.18);
+  --scrollbar-thumb-hover:rgba(0,0,0,0.32);
 `;
 
 // ─────────────────────────────────────────────────────────────

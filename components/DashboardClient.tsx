@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef, useCallback } from "react";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -355,19 +356,11 @@ export default function DashboardClient({
           overflow-y: auto;
           overflow-x: hidden;
           padding: 28px;
-          /* Custom scrollbar */
-          scrollbar-width: thin;
-          scrollbar-color: var(--scrollbar-thumb) transparent;
+          /* Hide scrollbar but keep scroll functionality */
+          scrollbar-width: none;
+          -ms-overflow-style: none;
         }
-        .db-main::-webkit-scrollbar { width: 4px; }
-        .db-main::-webkit-scrollbar-track { background: transparent; }
-        .db-main::-webkit-scrollbar-thumb {
-          background: var(--scrollbar-thumb);
-          border-radius: 4px;
-        }
-        .db-main::-webkit-scrollbar-thumb:hover {
-          background: var(--scrollbar-thumb-hover);
-        }
+        .db-main::-webkit-scrollbar { display: none; }
 
         /* ── Product list items ── */
         .db-add-btn {
@@ -585,11 +578,13 @@ export default function DashboardClient({
 
           <div className="db-sidebar-bottom">
             <div className="db-user">
-              <div className="db-avatar">{initials}</div>
-              <div className="db-user-info">
-                <div className="db-user-name">{profile?.full_name ?? "User"}</div>
-                <div className="db-user-email">{profile?.email}</div>
-              </div>
+              <Link href="/profile" style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, overflow: "hidden", textDecoration: "none" }}>
+                <div className="db-avatar">{initials}</div>
+                <div className="db-user-info">
+                  <div className="db-user-name">{profile?.full_name ?? "User"}</div>
+                  <div className="db-user-email" style={{ color: "var(--accent)" }}>{profile?.email}</div>
+                </div>
+              </Link>
               <form action="/auth/signout" method="POST">
                 <button type="submit" className="db-signout-btn" title="Sign out">↪</button>
               </form>
