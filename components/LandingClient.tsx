@@ -19,7 +19,7 @@ const TICKER_ITEMS = [
 const FEATURES = [
   { num: "01", icon: "↓", title: "Price Drop Alerts",    desc: "Set your target price. The moment it's hit, you get an instant Gmail notification — before stock runs out." },
   { num: "02", icon: "📈", title: "Price History Graphs", desc: "See the full price timeline of every product you track. Know if that \"sale\" is actually a sale." },
-  { num: "03", icon: "⚙",  title: "Auto Scraping",        desc: "Cron-powered scrapers check prices every 4 hours. Flip-resistant and bot-aware." },
+  { num: "03", icon: "⚙",  title: "Auto Scraping",        desc: "Cron-powered scrapers check prices every 24 hours. Flip-resistant and bot-aware." },
   { num: "04", icon: "🔒", title: "Gmail OAuth",          desc: "One-click sign in with Google. Your credentials never touch our servers." },
   { num: "05", icon: "📊", title: "Analytics Dashboard",  desc: "Total savings, best deals, most volatile products — your personal price intelligence HQ." },
   { num: "06", icon: "🌐", title: "Multi-Platform",       desc: "Amazon, Flipkart, Myntra and more. Paste any product URL and we handle the rest." },
