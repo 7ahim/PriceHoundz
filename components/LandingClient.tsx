@@ -38,7 +38,7 @@ const PLANS = [
     price: "₹0",
     period: "forever",
     desc: "Perfect for personal use — track your wishlist and save smarter.",
-    features: ["Up to 5 products", "Price checks every 4 hours", "Gmail alerts", "30-day price history", "Basic analytics"],
+    features: ["Up to 5 products", "Price checks every 24 hours", "Gmail alerts", "30-day price history", "Basic analytics"],
     cta: "GET STARTED FREE",
     accent: false,
   },
