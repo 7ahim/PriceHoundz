@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, lazy, Suspense } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+
+const TourTriggerButton = dynamic(
+  () => import("@/components/OnboardingTour").then((m) => ({ default: m.TourTriggerButton })),
+  { ssr: false }
+);
+const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"), { ssr: false });
 
 type Theme = "dark" | "light";
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: "dark", toggle: () => {} });
@@ -230,10 +237,26 @@ export function DashboardNav({
 }: DashboardNavProps) {
   const { theme, toggle } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [tourRun,    setTourRun]    = useState(false);
   const closeDrawer = () => setDrawerOpen(false);
+
+  const startGuide = () => {
+    setTourRun(false);
+    // Small timeout lets state reset before Joyride re-mounts
+    setTimeout(() => setTourRun(true), 80);
+  };
 
   return (
     <>
+      {/* Tour mounted at nav level so it works from any tab */}
+      {tourRun && (
+        <OnboardingTour
+          forceStart
+          page={activeTab === "analytics" ? "analytics" : "tracker"}
+          onFinish={() => setTourRun(false)}
+        />
+      )}
+
       <nav className="ph-nav">
         {/* Logo */}
         <Link href="/" className="ph-nav-logo">
@@ -252,6 +275,9 @@ export function DashboardNav({
 
         {/* Right controls */}
         <div className="ph-nav-right">
+          {/* Guide button — lives in the navbar on all dashboard pages */}
+          <TourTriggerButton onClick={startGuide} />
+
           <div className="ph-theme-toggle">
             <span className="ph-theme-icon">{theme==="dark" ? "🌙" : "☀️"}</span>
             <button className={`ph-theme-btn ${theme}`} onClick={toggle} aria-label="Toggle theme" />
@@ -259,7 +285,7 @@ export function DashboardNav({
           <form action="/auth/signout" method="POST">
             <button type="submit" className="ph-signout-btn">SIGN OUT ↪</button>
           </form>
-          {/* Mobile hamburger — either controls internal drawer OR external sidebar */}
+          {/* Mobile hamburger */}
           <button
             className={`ph-hamburger${(onMenuClick ? mobileMenuOpen : drawerOpen) ? " open":""}`}
             onClick={onMenuClick ?? (() => setDrawerOpen((v) => !v))}

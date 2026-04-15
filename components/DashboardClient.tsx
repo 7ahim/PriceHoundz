@@ -15,12 +15,6 @@ import { formatPrice, getPlatformLabel, getPlatformColor, timeAgo } from "@/lib/
 import { DashboardNav } from "@/components/DashboardNav";
 import type { Profile, TrackedProduct, PriceHistory } from "@/types/supabase";
 
-const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"), { ssr: false });
-const TourTriggerButton = dynamic(
-  () => import("@/components/OnboardingTour").then((m) => ({ default: m.TourTriggerButton })),
-  { ssr: false }
-);
-
 interface Props { profile: Profile | null; products: TrackedProduct[]; allHistory: PriceHistory[]; }
 interface OptimisticProduct extends TrackedProduct { _scraping: boolean; }
 
@@ -63,7 +57,6 @@ export default function DashboardClient({ profile, products: initialProducts, al
   const [editProduct,   setEditProduct]   = useState<OptimisticProduct | null>(null);
   const [addError,      setAddError]      = useState<string | null>(null);
   const [scrapeError,   setScrapeError]   = useState<string | null>(null);
-  const [forceTour,     setForceTour]     = useState(false);
   // Mobile sidebar state — controls the collapsible sidebar overlay on mobile
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [isPending,     startTransition]  = useTransition();
@@ -532,7 +525,6 @@ export default function DashboardClient({ profile, products: initialProducts, al
         }
       `}</style>
 
-      <OnboardingTour forceStart={forceTour} onFinish={() => setForceTour(false)} />
 
       {/* Mobile sidebar overlay + drawer */}
       <div className={`db-mobile-overlay${mobileSidebar ? " open":""}`} onClick={() => setMobileSidebar(false)} />
@@ -546,13 +538,11 @@ export default function DashboardClient({ profile, products: initialProducts, al
 
         {/* Main */}
         <main className="db-main">
-          {/* Guide row — mobile shows products toggle here */}
-          <div className="db-guide-row">
+          {/* Mobile toggle — only visible on mobile, opens the sidebar drawer */}
+          <div style={{ marginBottom:16 }}>
             <button className="db-mobile-toggle" onClick={() => setMobileSidebar(true)}>
               ☰ {localProducts.length > 0 ? `${localProducts.length} Products` : "Products"}
             </button>
-            <div style={{ flex:1 }} />
-            <TourTriggerButton onClick={() => { localStorage.removeItem("pricehound_tour_seen"); setForceTour(true); }} />
           </div>
 
           {localProducts.some((p) => p._scraping) && (

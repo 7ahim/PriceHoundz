@@ -9,7 +9,7 @@ export type Profile = {
   created_at: string;
 };
 
-export type Platform = "amazon" | "flipkart" | "myntra" | "other";
+export type Platform = "amazon" | "flipkart" | "myntra" | "reliancedigital" | "croma" | "poorvika" | "meesho" | "other";
 
 export type TrackedProduct = {
   id: string;

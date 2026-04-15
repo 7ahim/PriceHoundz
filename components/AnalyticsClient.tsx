@@ -183,23 +183,22 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
   return (
     <ThemeProvider>
       <style>{`
-        .an-wrap  { min-height:100vh; background:var(--bg); }
-        .an-body  { padding:40px 48px 80px; max-width:1400px; margin:0 auto; }
+        .an-scroll {
+          position:fixed; top:52px; left:0; right:0; bottom:0;
+          overflow-y:auto; overflow-x:hidden;
+          background:var(--bg);
+          scrollbar-width:none; -ms-overflow-style:none;
+        }
+        .an-scroll::-webkit-scrollbar { display:none; }
+        .an-body  { padding:36px 48px 80px; max-width:1400px; margin:0 auto; }
 
-        .an-header { margin-bottom:40px; }
-        .an-header-label {
-          font-family:'DM Mono',monospace; font-size:11px;
-          color:var(--accent); letter-spacing:0.12em; margin-bottom:10px;
-        }
+        .an-header { margin-bottom:36px; }
+        .an-header-label { font-family:'DM Mono',monospace; font-size:11px; color:var(--accent); letter-spacing:0.12em; margin-bottom:10px; }
         .an-header-label::before { content:'// '; }
-        .an-header-title {
-          font-family:'Syne',sans-serif; font-weight:800;
-          font-size:clamp(28px,3vw,44px); letter-spacing:-2px; margin-bottom:8px;
-          color:var(--text);
-        }
+        .an-header-title { font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(26px,3vw,42px); letter-spacing:-2px; margin-bottom:8px; color:var(--text); }
         .an-header-sub { font-size:14px; color:var(--muted2); font-weight:300; }
 
-        .an-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:36px; }
+        .an-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:32px; }
         .an-stat  { background:var(--bg2); border:1px solid var(--border); padding:16px 18px; transition:background 0.25s,border-color 0.25s; }
         .an-stat-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:0.1em; margin-bottom:8px; }
         .an-stat-value { font-family:'Syne',sans-serif; font-weight:700; font-size:22px; letter-spacing:-1px; line-height:1; color:var(--text); }
@@ -207,76 +206,67 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
 
         .an-grid-2  { display:grid; grid-template-columns:1fr 1fr;     gap:16px; margin-bottom:16px; }
         .an-grid-3  { display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; margin-bottom:16px; }
-        .an-grid-21 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px; }
 
-        .an-card {
-          background:var(--bg2); border:1px solid var(--border); padding:20px 24px;
-          transition:background 0.25s,border-color 0.25s;
-        }
+        .an-card { background:var(--bg2); border:1px solid var(--border); padding:20px 24px; transition:background 0.25s,border-color 0.25s; }
         .an-card-header  { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px; }
         .an-card-title   { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; }
         .an-card-sub     { font-size:12px; color:var(--muted); font-weight:300; margin-bottom:20px; }
-        .an-card-badge   {
-          font-family:'DM Mono',monospace; font-size:10px; padding:3px 8px;
-          background:rgba(92,138,0,0.1); color:var(--accent);
-          border:1px solid rgba(92,138,0,0.2);
-        }
-        .an-no-data {
-          display:flex; flex-direction:column; align-items:center; justify-content:center;
-          gap:10px; color:var(--muted); font-family:'DM Mono',monospace; font-size:12px;
-        }
-        .an-sparklines { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
-        .an-spark-card {
-          background:var(--bg3); border:1px solid var(--border); padding:14px 16px;
-          transition:background 0.25s,border-color 0.25s;
-        }
+        .an-card-badge   { font-family:'DM Mono',monospace; font-size:10px; padding:3px 8px; background:color-mix(in srgb,var(--accent) 10%,transparent); color:var(--accent); border:1px solid color-mix(in srgb,var(--accent) 22%,transparent); }
+        .an-no-data { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--muted); font-family:'DM Mono',monospace; font-size:12px; }
+
+        .an-sparklines { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+        .an-spark-card { background:var(--bg3); border:1px solid var(--border); padding:14px 16px; transition:background 0.25s,border-color 0.25s; }
         .an-spark-name   { font-size:12px; font-weight:500; color:var(--text); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .an-spark-meta   { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); margin-bottom:12px; }
-        .an-spark-prices { display:flex; gap:16px; margin-top:8px; }
+        .an-spark-prices { display:flex; gap:14px; margin-top:8px; flex-wrap:wrap; }
         .an-spark-plabel { font-family:'DM Mono',monospace; font-size:9px; color:var(--muted); letter-spacing:0.08em; }
-        .an-spark-pval   { font-family:'Syne',sans-serif; font-weight:700; font-size:15px; letter-spacing:-0.5px; color:var(--text); }
+        .an-spark-pval   { font-family:'Syne',sans-serif; font-weight:700; font-size:14px; letter-spacing:-0.5px; color:var(--text); }
 
-        .an-highlight { background:rgba(92,138,0,0.04); border:1px solid rgba(92,138,0,0.2); padding:20px 24px; }
+        .an-highlight { background:color-mix(in srgb,var(--accent) 4%,transparent); border:1px solid color-mix(in srgb,var(--accent) 22%,transparent); padding:20px 24px; }
         .an-highlight-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--accent); letter-spacing:0.1em; margin-bottom:10px; }
         .an-highlight-name  { font-family:'Syne',sans-serif; font-weight:700; font-size:18px; letter-spacing:-0.5px; margin-bottom:8px; color:var(--text); }
-        .an-highlight-val   { font-family:'Syne',sans-serif; font-weight:800; font-size:32px; letter-spacing:-1.5px; color:var(--accent); }
+        .an-highlight-val   { font-family:'Syne',sans-serif; font-weight:800; font-size:30px; letter-spacing:-1.5px; color:var(--accent); }
         .an-highlight-sub   { font-size:12px; color:var(--muted2); margin-top:4px; }
 
-        .an-dist-row       { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
-        .an-dist-name      { font-size:12px; color:var(--text); flex:0 0 160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .an-dist-bar-wrap  { flex:1; background:var(--bg3); height:6px; }
-        .an-dist-bar       { height:6px; transition:width 0.6s ease; }
-        .an-dist-pct       { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted2); flex:0 0 48px; text-align:right; }
+        .an-dist-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+        .an-dist-name { font-size:12px; color:var(--text); flex:0 0 150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .an-dist-bar-wrap { flex:1; background:var(--bg3); height:6px; }
+        .an-dist-bar { height:6px; transition:width 0.6s ease; }
+        .an-dist-pct { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted2); flex:0 0 48px; text-align:right; }
 
-        .an-platform-row       { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
-        .an-platform-name      { font-family:'DM Mono',monospace; font-size:11px; color:var(--text); flex:0 0 80px; }
-        .an-platform-bar-wrap  { flex:1; background:var(--bg3); height:8px; }
-        .an-platform-bar       { height:8px; transition:width 0.6s ease; }
-        .an-platform-count     { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted2); flex:0 0 24px; text-align:right; }
+        .an-platform-row { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+        .an-platform-name { font-family:'DM Mono',monospace; font-size:11px; color:var(--text); flex:0 0 80px; }
+        .an-platform-bar-wrap { flex:1; background:var(--bg3); height:8px; }
+        .an-platform-bar { height:8px; transition:width 0.6s ease; }
+        .an-platform-count { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted2); flex:0 0 24px; text-align:right; }
 
-        .an-empty       { text-align:center; padding:80px 32px; }
+        .an-empty { text-align:center; padding:80px 32px; }
         .an-empty-icon  { font-size:48px; margin-bottom:16px; }
         .an-empty-title { font-family:'Syne',sans-serif; font-weight:700; font-size:22px; letter-spacing:-0.5px; margin-bottom:8px; color:var(--text); }
         .an-empty-sub   { font-size:14px; color:var(--muted2); font-weight:300; max-width:360px; margin:0 auto 24px; line-height:1.6; }
-        .an-empty-btn   {
-          display:inline-block; background:var(--accent); color:#0a0a0a;
-          font-family:'DM Mono',monospace; font-size:12px; font-weight:500;
-          padding:12px 28px; text-decoration:none; letter-spacing:0.06em;
-        }
+        .an-empty-btn   { display:inline-block; background:var(--accent); color:var(--accent-fg,#0a0a0a); font-family:'DM Mono',monospace; font-size:12px; font-weight:500; padding:12px 28px; text-decoration:none; letter-spacing:0.06em; }
 
         @media(max-width:1100px) { .an-stats { grid-template-columns:repeat(3,1fr); } }
-        @media(max-width:900px)  {
-          .an-body  { padding:24px; }
+        @media(max-width:900px) {
+          .an-body { padding:24px 20px 60px; }
           .an-stats { grid-template-columns:repeat(2,1fr); }
-          .an-grid-2, .an-grid-3, .an-grid-21 { grid-template-columns:1fr; }
+          .an-grid-2,.an-grid-3 { grid-template-columns:1fr; }
+        }
+        @media(max-width:600px) {
+          .an-body { padding:16px 14px 60px; }
+          .an-stats { grid-template-columns:repeat(2,1fr); gap:8px; }
+          .an-card { padding:14px 16px; }
+          .an-sparklines { grid-template-columns:1fr; }
+        }
+        @media(max-width:768px) {
+          .an-scroll { position:static; height:auto; overflow:visible; padding-top:52px; }
         }
       `}</style>
 
       <DashboardNav activeTab="analytics" />
 
-      <div className="ph-page an-wrap">
+      <div className="an-scroll">
         <div className="an-body">
-          {/* ── Header ── */}
           <div className="an-header">
             <div className="an-header-label">analytics</div>
             <h1 className="an-header-title">Price Intelligence</h1>
@@ -286,7 +276,6 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
               &nbsp;·&nbsp; {totalAlerts} alert{totalAlerts !== 1 ? "s" : ""} sent
             </p>
           </div>
-
           {/* ── Empty state ── */}
           {totalProducts === 0 && (
             <div className="an-empty">
@@ -619,6 +608,7 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
 
             </>
           )}
+
         </div>
       </div>
     </ThemeProvider>

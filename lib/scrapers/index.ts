@@ -3,11 +3,15 @@
 // Amazon uses its own 4-strategy cascade internally, so we only
 // retry here for non-Amazon platforms or genuine network failures.
 
-import { scrapeAmazon }   from "./amazon";
-import { scrapeFlipkart } from "./flipkart";
-import { scrapeMyntra }   from "./myntra";
-import { detectPlatform } from "@/lib/utils";
-import type { ScrapeResult } from "./base";
+import { scrapeAmazon }           from "./amazon";
+import { scrapeFlipkart }         from "./flipkart";
+import { scrapeMyntra }           from "./myntra";
+import { scrapeRelianceDigital }  from "./reliancedigital";
+import { scrapeCroma }            from "./croma";
+import { scrapePoorvika }         from "./poorvika";
+import { scrapeMeesho }           from "./meesho";
+import { detectPlatform }         from "@/lib/utils";
+import type { ScrapeResult }      from "./base";
 
 export type { ScrapeResult };
 
@@ -15,10 +19,14 @@ export type { ScrapeResult };
 // Amazon, Flipkart, and Myntra all handle their own multi-strategy
 // retries internally. No outer retries needed — they just waste runtime.
 const RETRY_CONFIG: Record<string, number[]> = {
-  amazon:   [0],
-  flipkart: [0],
-  myntra:   [0],
-  other:    [0, 4_000, 10_000],
+  amazon:          [0],
+  flipkart:        [0],
+  myntra:          [0],
+  reliancedigital: [0],
+  croma:           [0],
+  poorvika:        [0],
+  meesho:          [0],
+  other:           [0, 4_000, 10_000],
 };
 
 function sleep(ms: number) {
@@ -48,6 +56,18 @@ export async function scrapeProduct(url: string): Promise<ScrapeResult> {
         case "myntra":
           lastResult = await scrapeMyntra(url);
           break;
+        case "reliancedigital":
+          lastResult = await scrapeRelianceDigital(url);
+          break;
+        case "croma":
+          lastResult = await scrapeCroma(url);
+          break;
+        case "poorvika":
+          lastResult = await scrapePoorvika(url);
+          break;
+        case "meesho":
+          lastResult = await scrapeMeesho(url);
+          break;
         default:
           lastResult = await scrapeGeneric(url);
       }
@@ -65,7 +85,9 @@ export async function scrapeProduct(url: string): Promise<ScrapeResult> {
 
     // For generic platforms, a hard block means stop retrying
     if (
-      platform !== "amazon" && platform !== "flipkart" && platform !== "myntra" &&
+      platform !== "amazon" && platform !== "flipkart" &&
+      platform !== "myntra" && platform !== "reliancedigital" &&
+      platform !== "croma" && platform !== "poorvika" && platform !== "meesho" &&
       (lastResult.error === "CAPTCHA" || lastResult.error === "BLOCKED")
     ) {
       console.warn(`[scraper] Hard block on ${url}: ${lastResult.error}`);
