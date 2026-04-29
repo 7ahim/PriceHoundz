@@ -21,12 +21,12 @@ const FEATURES = [
   { num: "03", icon: "⚙",  title: "Auto Scraping",        desc: "Cron-powered scrapers run regularly. Bot-aware, flip-resistant." },
   { num: "04", icon: "🔒", title: "Gmail OAuth",          desc: "One-click Google sign-in. Your credentials never touch our servers." },
   { num: "05", icon: "📊", title: "Analytics Dashboard",  desc: "Total savings, best deals, most volatile products — your price intelligence HQ." },
-  { num: "06", icon: "🌐", title: "Multi-Platform",       desc: "Amazon, Flipkart, Myntra, Reliance Digital. Paste any URL, we handle the rest." },
+  { num: "06", icon: "🌐", title: "Multi-Platform",       desc: "Amazon, Flipkart, Croma, Reliance Digital. Paste any URL, we handle the rest." },
 ];
 
 const STEPS = [
   { num: "01", title: "Sign in with Google",   desc: "OAuth via Supabase. Your Gmail is your identity and notification inbox.", active: true },
-  { num: "02", title: "Paste a product URL",   desc: "Drop any link from Amazon, Flipkart, Myntra, or Reliance Digital." },
+  { num: "02", title: "Paste a product URL",   desc: "Drop any link from Amazon, Flipkart, Croma, or Reliance Digital." },
   { num: "03", title: "Set your target price", desc: "Tell us when to alert you. We check the price on a schedule." },
   { num: "04", title: "Sit back & save",       desc: "Get an email the moment the price drops. Click, buy, celebrate." },
 ];
@@ -575,7 +575,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
           </h1>
           <p className="lp-hero-sub">
             PriceHound watches your favourite products across Amazon, Flipkart,
-            Myntra &amp; Reliance Digital — and emails you the moment prices drop.
+            Croma &amp; Reliance Digital — and emails you the moment prices drop.
           </p>
           <div className="lp-hero-actions">
             {isLoggedIn ? (
@@ -649,7 +649,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
             </div>
           ))}
         </div>
-        <p className="lp-analytics-desc">PriceHound helps thousands of Indian shoppers save on Amazon, Flipkart, Myntra and Reliance Digital. Our scraper runs around the clock so you never have to check manually.</p>
+        <p className="lp-analytics-desc">PriceHound helps thousands of Indian shoppers save on Amazon, Flipkart, Croma and Reliance Digital. Our scraper runs around the clock so you never have to check manually.</p>
       </section>
 
       {/* How it works */}
