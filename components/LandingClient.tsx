@@ -39,13 +39,13 @@ const PLANS = [
     cta: "GET STARTED FREE", accent: false,
   },
   {
-    name: "Pro", price: "₹199", period: "per month",
+    name: "Pro", price: "₹99", period: "per month",
     desc: "For serious shoppers who never want to miss a price drop.",
     features: ["Up to 10 products", "Price checks every hour", "Instant alerts", "Gmail + WhatsApp alerts", "Full price history", "Advanced analytics", "Priority scraping"],
     cta: "START PRO TRIAL", accent: true, badge: "MOST POPULAR",
   },
   {
-    name: "Family", price: "₹349", period: "per month",
+    name: "Family", price: "₹199", period: "per month",
     desc: "Share PriceHound with up to 4 family members.",
     features: ["Everything in Pro", "Unlimited products", "Up to 4 members", "Shared dashboard", "Family savings report", "Dedicated support"],
     cta: "GET FAMILY PLAN", accent: false,
