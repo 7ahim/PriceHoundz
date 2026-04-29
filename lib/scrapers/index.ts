@@ -5,11 +5,9 @@
 
 import { scrapeAmazon }           from "./amazon";
 import { scrapeFlipkart }         from "./flipkart";
-import { scrapeMyntra }           from "./myntra";
 import { scrapeRelianceDigital }  from "./reliancedigital";
 import { scrapeCroma }            from "./croma";
 import { scrapePoorvika }         from "./poorvika";
-import { scrapeMeesho }           from "./meesho";
 import { detectPlatform }         from "@/lib/utils";
 import type { ScrapeResult }      from "./base";
 
@@ -21,11 +19,9 @@ export type { ScrapeResult };
 const RETRY_CONFIG: Record<string, number[]> = {
   amazon:          [0],
   flipkart:        [0],
-  myntra:          [0],
   reliancedigital: [0],
   croma:           [0],
   poorvika:        [0],
-  meesho:          [0],
   other:           [0, 4_000, 10_000],
 };
 
@@ -53,9 +49,6 @@ export async function scrapeProduct(url: string): Promise<ScrapeResult> {
         case "flipkart":
           lastResult = await scrapeFlipkart(url);
           break;
-        case "myntra":
-          lastResult = await scrapeMyntra(url);
-          break;
         case "reliancedigital":
           lastResult = await scrapeRelianceDigital(url);
           break;
@@ -64,9 +57,6 @@ export async function scrapeProduct(url: string): Promise<ScrapeResult> {
           break;
         case "poorvika":
           lastResult = await scrapePoorvika(url);
-          break;
-        case "meesho":
-          lastResult = await scrapeMeesho(url);
           break;
         default:
           lastResult = await scrapeGeneric(url);
@@ -86,8 +76,8 @@ export async function scrapeProduct(url: string): Promise<ScrapeResult> {
     // For generic platforms, a hard block means stop retrying
     if (
       platform !== "amazon" && platform !== "flipkart" &&
-      platform !== "myntra" && platform !== "reliancedigital" &&
-      platform !== "croma" && platform !== "poorvika" && platform !== "meesho" &&
+      platform !== "reliancedigital" &&
+      platform !== "croma" && platform !== "poorvika" &&
       (lastResult.error === "CAPTCHA" || lastResult.error === "BLOCKED")
     ) {
       console.warn(`[scraper] Hard block on ${url}: ${lastResult.error}`);
