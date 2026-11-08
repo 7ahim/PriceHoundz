@@ -95,6 +95,8 @@ function extractFromScripts($: cheerio.CheerioAPI): { price: number | null; name
       /"finalPrice"\s*:\s*(\d+)/,
       /"sellingPrice"\s*:\s*(\d+)/,
       /"discountedPrice"\s*:\s*(\d+)/,
+      /"finalPrice"\s*:\s*\{[^}]*"decimalValue"\s*:\s*"([\d,]+)/,
+      /"price"\s*:\s*"(\d+(?:\.\d+)?)"/,
       /"price"\s*:\s*\{[^}]*"value"\s*:\s*(\d+)/,
       /"value"\s*:\s*(\d+).*?"currency"\s*:\s*"INR"/,
     ];
@@ -102,7 +104,7 @@ function extractFromScripts($: cheerio.CheerioAPI): { price: number | null; name
     for (const re of pricePatterns) {
       const m = text.match(re);
       if (m?.[1]) {
-        const n = parseInt(m[1], 10);
+        const n = Math.round(parseFloat(m[1].replace(/,/g, "")));
         if (n > 100 && n < 10_000_000) { // sanity check
           price = n;
           break;
@@ -145,7 +147,7 @@ function parseFlipkartHtml(html: string): ScrapeResult | null {
     if (price) return;
     try {
       const data  = JSON.parse($(el).html() ?? "");
-      const items = Array.isArray(data) ? data : [data];
+      const items = Array.isArray(data) ? data : (data?.["@graph"] ?? [data]);
       for (const item of items) {
         const offer = item?.offers ?? item?.offer;
         const p     = offer?.price ?? offer?.lowPrice;
@@ -156,6 +158,14 @@ function parseFlipkartHtml(html: string): ScrapeResult | null {
       }
     } catch {}
   });
+
+  // ── Meta tags ────────────────────────────────────────────
+  if (!price) {
+    const mp = $('meta[itemprop="price"]').attr("content") ||
+               $('meta[property="product:price:amount"]').attr("content") ||
+               $('meta[property="og:price:amount"]').attr("content");
+    if (mp) price = parsePrice(mp);
+  }
 
   // ── DOM selectors ────────────────────────────────────────
   if (!price) {
@@ -252,13 +262,19 @@ async function tryApiInterception(desktopUrl: string): Promise<ScrapeResult | nu
 
     await page.goto(desktopUrl, {
       waitUntil: "domcontentloaded",
-      timeout: 25_000,
+      timeout: 20_000,
     });
 
-    // Wait briefly for XHR calls to fire
-    await randomDelay(2000, 3500);
+    // Wait briefly for XHR calls to fire / the price to render
+    await page.waitForSelector(PRICE_SELECTORS.join(", "), { timeout: 6_000 }).catch(() => {});
+    await randomDelay(800, 1500);
 
+    const html = await page.content();
     await browser.close();
+
+    // Prefer what is actually rendered on the page (matches what the user sees)
+    const fromDom = parseFlipkartHtml(html);
+    if (fromDom?.price) return fromDom;
 
     if (capturedPrice) {
       return { price: capturedPrice, name: capturedName, imageUrl: null, available: true };
@@ -279,8 +295,6 @@ async function tryMobileSite(mobileUrl: string): Promise<ScrapeResult | null> {
     "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
     // iPhone Safari
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-    // Samsung browser
-    "Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/18.0 Chrome/107.0.5304.141 Mobile Safari/537.36",
   ];
 
   for (const ua of mobileAgents) {
@@ -294,7 +308,7 @@ async function tryMobileSite(mobileUrl: string): Promise<ScrapeResult | null> {
           "Referer":         "https://www.google.com/",
           "Cache-Control":   "no-cache",
         },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(8_000),
       });
 
       if (!res.ok) continue;
@@ -341,15 +355,15 @@ async function tryPuppeteerMobile(mobileUrl: string): Promise<ScrapeResult | nul
       blocked.includes(req.resourceType()) ? req.abort() : req.continue();
     });
 
-    await page.goto(mobileUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.goto(mobileUrl, { waitUntil: "domcontentloaded", timeout: 20_000 });
 
     // Wait for price content
     await page.waitForSelector(
       "div.Nx9bqj, ._30jeq3, div.dyC4hf, [class*='price']",
-      { timeout: 12_000 }
+      { timeout: 8_000 }
     ).catch(() => {});
 
-    await randomDelay(800, 1800);
+    await randomDelay(800, 1500);
 
     const html   = await page.content();
     await browser.close();
@@ -374,11 +388,6 @@ async function tryDirectFetch(desktopUrl: string): Promise<ScrapeResult | null> 
       ua: randomUserAgent(),
       ref: "https://www.google.co.in/",
     },
-    // Bingbot
-    {
-      ua: "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
-      ref: "https://www.bing.com/",
-    },
   ];
 
   for (const { ua, ref } of attempts) {
@@ -391,7 +400,7 @@ async function tryDirectFetch(desktopUrl: string): Promise<ScrapeResult | null> 
           "Referer":         ref,
           "Cache-Control":   "no-cache",
         },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(8_000),
       });
 
       if (!res.ok) continue;
@@ -405,42 +414,48 @@ async function tryDirectFetch(desktopUrl: string): Promise<ScrapeResult | null> 
 }
 
 // ── Main export ───────────────────────────────────────────────
+// /api/scrape is limited to 60s on Vercel, so the whole cascade has to fit
+// in that window. Cheap plain-HTTP strategies run first (in parallel),
+// browsers are only started if there is enough time left.
+const TIME_BUDGET_MS = 50_000;
+
 export async function scrapeFlipkart(url: string): Promise<ScrapeResult> {
   const { desktop, mobile } = normaliseUrl(url);
+  const started  = Date.now();
+  const timeLeft = () => TIME_BUDGET_MS - (Date.now() - started);
 
   console.log(`[flipkart] Scraping ${desktop}`);
 
-  // ── Strategy 1: Intercept Flipkart's price API ───────────
-  console.log("[flipkart] Trying API interception...");
-  const apiResult = await tryApiInterception(desktop);
-  if (apiResult?.price) {
-    console.log(`[flipkart] API interception succeeded: ₹${apiResult.price}`);
-    return apiResult;
+  // ── Strategy 1: plain HTTP (mobile + desktop in parallel) ─
+  console.log("[flipkart] Trying plain fetch (mobile + desktop)...");
+  const [mobileResult, fetchResult] = await Promise.all([
+    tryMobileSite(mobile),
+    tryDirectFetch(desktop),
+  ]);
+  const quick = fetchResult?.price ? fetchResult : mobileResult?.price ? mobileResult : null;
+  if (quick?.price) {
+    console.log(`[flipkart] Plain fetch succeeded: ₹${quick.price}`);
+    return quick;
   }
 
-  // ── Strategy 2: Mobile site fetch ───────────────────────
-  console.log("[flipkart] Trying mobile site...");
-  const mobileResult = await tryMobileSite(mobile);
-  if (mobileResult?.price) {
-    console.log(`[flipkart] Mobile site succeeded: ₹${mobileResult.price}`);
-    return mobileResult;
+  // ── Strategy 2: Puppeteer desktop (DOM + API interception) ─
+  if (timeLeft() > 30_000) {
+    console.log("[flipkart] Trying Puppeteer desktop...");
+    const apiResult = await tryApiInterception(desktop);
+    if (apiResult?.price) {
+      console.log(`[flipkart] Puppeteer desktop succeeded: ₹${apiResult.price}`);
+      return apiResult;
+    }
   }
 
   // ── Strategy 3: Puppeteer mobile viewport ───────────────
-  console.log("[flipkart] Trying Puppeteer mobile...");
-  await randomDelay(2000, 4000);
-  const puppeteerResult = await tryPuppeteerMobile(mobile);
-  if (puppeteerResult?.price) {
-    console.log(`[flipkart] Puppeteer mobile succeeded: ₹${puppeteerResult.price}`);
-    return puppeteerResult;
-  }
-
-  // ── Strategy 4: Direct fetch ─────────────────────────────
-  console.log("[flipkart] Trying direct fetch...");
-  const fetchResult = await tryDirectFetch(desktop);
-  if (fetchResult?.price) {
-    console.log(`[flipkart] Direct fetch succeeded: ₹${fetchResult.price}`);
-    return fetchResult;
+  if (timeLeft() > 25_000) {
+    console.log("[flipkart] Trying Puppeteer mobile...");
+    const puppeteerResult = await tryPuppeteerMobile(mobile);
+    if (puppeteerResult?.price) {
+      console.log(`[flipkart] Puppeteer mobile succeeded: ₹${puppeteerResult.price}`);
+      return puppeteerResult;
+    }
   }
 
   console.error(`[flipkart] All strategies failed for ${desktop}`);
@@ -449,6 +464,6 @@ export async function scrapeFlipkart(url: string): Promise<ScrapeResult> {
     name:      null,
     imageUrl:  null,
     available: false,
-    error:     "All scraping strategies failed. Flipkart may be blocking this IP.",
+    error:     "Could not read the price from Flipkart. It may be blocking this server's IP.",
   };
 }

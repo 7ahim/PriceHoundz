@@ -11,7 +11,7 @@ import {
   addProduct, deleteProduct, toggleProduct,
   updateTargetPrice, revalidateDashboard,
 } from "@/lib/actions";
-import { formatPrice, getPlatformLabel, getPlatformColor, timeAgo } from "@/lib/utils";
+import { formatPrice, getPlatformLabel, getPlatformColor, timeAgo, detectPlatform } from "@/lib/utils";
 import { DashboardNav } from "@/components/DashboardNav";
 import type { Profile, TrackedProduct, PriceHistory, CrossPlatformPrice, CrossPriceHistory } from "@/types/supabase";
 
@@ -233,7 +233,7 @@ export default function DashboardClient({
     const tempId = `temp-${Date.now()}`;
     const optimistic: OptimisticProduct = {
       id:tempId, user_id:profile?.id??"", url, name:name||null, image_url:null,
-      platform:null, target_price:tp, current_price:null,
+      platform:detectPlatform(url), target_price:tp, current_price:null,
       is_active:true, notify_sent:false,
       created_at:new Date().toISOString(), updated_at:new Date().toISOString(),
       _scraping:true,
@@ -289,7 +289,8 @@ export default function DashboardClient({
           }]);
         }
       } else {
-        // Scrape failed — mark product as not scraping
+        // Scrape failed — mark product as not scraping and tell the user why
+        setScrapeError(scrapeData.error ?? "Could not read the price from this product page.");
         setLocalProducts((prev) => prev.map((p) => p.id===realProductId ? {...p, _scraping:false} : p));
       }
 
@@ -297,6 +298,7 @@ export default function DashboardClient({
       const { detectPlatform: dp } = await import("@/lib/utils");
       scrapedPlatform = dp(url);
     } catch {
+      setScrapeError("Price check timed out or failed. Try Refresh again in a moment.");
       setLocalProducts((prev) => prev.map((p) => p.id===realProductId ? {...p, _scraping:false} : p));
     }
 
