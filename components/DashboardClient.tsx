@@ -254,8 +254,9 @@ export default function DashboardClient({
       setSavedProductId(realProductId);
       setLocalProducts((prev) => prev.map((p) => p.id===tempId ? {...p, id:realProductId!} : p));
       setSelectedId(realProductId);
-    } catch {
-      setAddError("Failed to save. Please try again.");
+    } catch (err) {
+      console.error("[addProduct] request failed:", err);
+      setAddError("Failed to save — the server did not respond. Restart the dev server and check the terminal for errors.");
       setLocalProducts((prev) => prev.filter((p) => p.id !== tempId));
       setSelectedId(localProducts[0]?.id ?? null);
       setAddStep("form"); setShowAddModal(true); return;
