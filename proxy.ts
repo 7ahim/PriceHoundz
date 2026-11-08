@@ -1,11 +1,11 @@
-// middleware.ts  (place at the project root, next to package.json)
+// proxy.ts  
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PROTECTED_ROUTES = ["/dashboard"];
 const AUTH_ROUTES = ["/auth/login"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
