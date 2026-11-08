@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, TrendingUp, Settings, Lock, BarChart3, Globe, Moon, Sun } from "lucide-react";
+import { ArrowDown, TrendingUp, Settings, Lock, BarChart3, Globe } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const TICKER_ITEMS = [
@@ -226,7 +226,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
 
         /* Theme toggle — always visible, sits between auth and hamburger */
         .lp-theme-wrap { display:flex; align-items:center; gap:5px; flex-shrink:0; }
-        .lp-theme-icon { font-size:13px; line-height:1; user-select:none; display:inline-flex; align-items:center; }
+        .lp-theme-icon { font-size:13px; line-height:1; user-select:none; }
         .lp-theme-btn  { width:34px; height:20px; background:var(--border2); border:1px solid var(--border2); border-radius:10px; position:relative; cursor:none; flex-shrink:0; padding:0; transition:background 0.25s; }
         .lp-theme-btn::after { content:''; position:absolute; top:2px; width:14px; height:14px; border-radius:50%; background:var(--accent); transition:left 0.2s; }
         .lp-theme-btn.dark::after  { left:2px; }
@@ -485,7 +485,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
 
           {/* Theme toggle — always visible, beside auth on desktop, leftmost of [toggle+hamburger] on mobile */}
           <div className="lp-theme-wrap">
-            <span className="lp-theme-icon">{dark ? <Moon size={14} /> : <Sun size={14} />}</span>
+            <span className="lp-theme-icon">{dark ? "🌙" : "☀️"}</span>
             <button className={`lp-theme-btn ${theme}`} onClick={toggleTheme} aria-label="Toggle theme" style={{ cursor:"none" }} />
           </div>
 
