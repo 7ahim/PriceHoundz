@@ -44,8 +44,11 @@ const NAME_SELECTORS = [
 // ── Helpers ───────────────────────────────────────────────────
 function parsePrice(raw: string): number | null {
   // Handles "₹24,990", "24990", "24,990.00"
-  const cleaned = raw.replace(/[₹,\s\u20B9Rs.]/g, "").split(".")[0].trim();
-  const n = parseInt(cleaned, 10);
+  // Keep the decimal point: "₹67,999.00" must become 67999, not 6799900
+  const cleaned = raw.replace(/rs\.?|inr|₹|,|\s/gi, "");
+  const m = cleaned.match(/\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = Math.round(parseFloat(m[0]));
   return isNaN(n) || n <= 0 ? null : n;
 }
 
