@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, TrendingUp, Settings, Lock, BarChart3, Globe } from "lucide-react";
+import { ArrowDown, ArrowUp, TrendingUp, Settings, Lock, BarChart3, Globe, Moon, Sun, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const TICKER_ITEMS = [
@@ -54,7 +54,7 @@ const PLANS = [
 ];
 
 const PRODUCTS_PREVIEW = [
-  { name: "Sony WH-1000XM5",  price: "₹24,990", drop: "↓ ₹3,200", active: true },
+  { name: "Sony WH-1000XM5",  price: "₹24,990", drop: "₹3,200", active: true },
   { name: "Apple AirPods Pro", price: "₹19,900", drop: null },
   { name: "MacBook Air M3",    price: "₹1,09,990", drop: null },
   { name: "Kindle Paperwhite", price: "₹13,999", drop: null },
@@ -215,7 +215,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
         .lp-btn-ghost:hover { color:var(--text); border-color:var(--text); }
         .lp-btn-primary { background:var(--accent); color:var(--accent-fg); font-family:'DM Mono',monospace; font-size:11px; font-weight:500; padding:7px 14px; border:none; cursor:none; letter-spacing:0.05em; transition:opacity 0.2s,transform 0.15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
         .lp-btn-primary:hover { opacity:0.85; transform:translateY(-1px); }
-        .lp-btn-signout { background:transparent; border:none; color:var(--muted2); font-family:'DM Mono',monospace; font-size:10px; cursor:none; padding:4px 2px; transition:color 0.2s; }
+        .lp-btn-signout { display:inline-flex; align-items:center; background:transparent; border:none; color:var(--muted2); font-family:'DM Mono',monospace; font-size:10px; cursor:none; padding:4px 2px; transition:color 0.2s; }
         .lp-btn-signout:hover { color:var(--danger); }
 
         /* User pill */
@@ -226,7 +226,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
 
         /* Theme toggle — always visible, sits between auth and hamburger */
         .lp-theme-wrap { display:flex; align-items:center; gap:5px; flex-shrink:0; }
-        .lp-theme-icon { font-size:13px; line-height:1; user-select:none; }
+        .lp-theme-icon { display:inline-flex; align-items:center; line-height:1; user-select:none; }
         .lp-theme-btn  { width:34px; height:20px; background:var(--border2); border:1px solid var(--border2); border-radius:10px; position:relative; cursor:none; flex-shrink:0; padding:0; transition:background 0.25s; }
         .lp-theme-btn::after { content:''; position:absolute; top:2px; width:14px; height:14px; border-radius:50%; background:var(--accent); transition:left 0.2s; }
         .lp-theme-btn.dark::after  { left:2px; }
@@ -295,7 +295,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
         .lp-ticker-wrap  { border-top:1px solid var(--border); border-bottom:1px solid var(--border); overflow:hidden; padding:13px 0; background:var(--bg2); }
         .lp-ticker-track { display:flex; animation:ticker 30s linear infinite; width:max-content; }
         .lp-ticker-item  { display:flex; align-items:center; gap:10px; padding:0 36px; font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); white-space:nowrap; border-right:1px solid var(--border); }
-        .lp-price-tag    { font-size:11px; padding:2px 8px; font-weight:500; }
+        .lp-price-tag    { display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; font-weight:500; }
         .lp-price-down   { background:color-mix(in srgb,var(--accent) 13%,transparent); color:var(--accent); }
         .lp-price-up     { background:color-mix(in srgb,var(--accent2) 13%,transparent); color:var(--accent2); }
 
@@ -485,7 +485,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
 
           {/* Theme toggle — always visible, beside auth on desktop, leftmost of [toggle+hamburger] on mobile */}
           <div className="lp-theme-wrap">
-            <span className="lp-theme-icon">{dark ? "🌙" : "☀️"}</span>
+            <span className="lp-theme-icon">{dark ? <Moon size={14} /> : <Sun size={14} />}</span>
             <button className={`lp-theme-btn ${theme}`} onClick={toggleTheme} aria-label="Toggle theme" style={{ cursor:"none" }} />
           </div>
 
@@ -497,7 +497,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
               </Link>
               <Link href="/dashboard" className="lp-btn-primary">DASHBOARD →</Link>
               <button className="lp-btn-signout" onClick={handleSignOut} disabled={signingOut}>
-                {signingOut ? "…" : "↪"}
+                {signingOut ? "…" : <LogOut size={14} />}
               </button>
             </>
           ) : (
@@ -531,7 +531,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
           {isLoggedIn ? (
             <>
               <Link href="/dashboard" className="lp-btn-primary" onClick={() => setMobileOpen(false)} style={{ cursor:"pointer" }}>DASHBOARD →</Link>
-              <button className="lp-btn-ghost" onClick={handleSignOut} style={{ cursor:"pointer", border:"1px solid var(--danger)", color:"var(--danger)" }}>SIGN OUT ↪</button>
+              <button className="lp-btn-ghost" onClick={handleSignOut} style={{ cursor:"pointer", border:"1px solid var(--danger)", color:"var(--danger)" }}>SIGN OUT <LogOut size={12} /></button>
             </>
           ) : (
             <>
@@ -561,8 +561,8 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
             {isLoggedIn ? (
               <>
                 <Link href="/dashboard" className="lp-hero-btn-lg">LOAD DASHBOARD →</Link>
-                <button onClick={handleSignOut} disabled={signingOut} style={{ background:"transparent", color:"var(--muted2)", fontFamily:"'DM Mono',monospace", fontSize:13, padding:"13px 20px", border:"1px solid var(--border2)", cursor:"none", letterSpacing:"0.05em", transition:"color 0.2s,border-color 0.2s" }}>
-                  {signingOut ? "SIGNING OUT…" : "SIGN OUT ↪"}
+                <button onClick={handleSignOut} disabled={signingOut} style={{ background:"transparent", color:"var(--muted2)", fontFamily:"'DM Mono',monospace", fontSize:13, padding:"13px 20px", border:"1px solid var(--border2)", cursor:"none", letterSpacing:"0.05em", transition:"color 0.2s,border-color 0.2s", display:"inline-flex", alignItems:"center", gap:8 }}>
+                  {signingOut ? "SIGNING OUT…" : <>SIGN OUT <LogOut size={14} /></>}
                 </button>
               </>
             ) : (
@@ -593,7 +593,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
             <div className="lp-ticker-item" key={i}>
               {item.name}
               <span className={`lp-price-tag ${item.dir==="down" ? "lp-price-down":"lp-price-up"}`}>
-                {item.dir==="down" ? "↓" : "↑"} {item.price}
+                {item.dir==="down" ? <ArrowDown size={11} /> : <ArrowUp size={11} />} {item.price}
               </span>
             </div>
           ))}
@@ -669,7 +669,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
               {PRODUCTS_PREVIEW.map((p) => (
                 <div className={`lp-product-row${p.active?" active":""}`} key={p.name}>
                   <div className="lp-product-name">{p.name}</div>
-                  <div className="lp-product-price">{p.price} {p.drop && <span className="lp-product-drop">{p.drop}</span>}</div>
+                  <div className="lp-product-price">{p.price} {p.drop && <span className="lp-product-drop" style={{ display:"inline-flex", alignItems:"center", gap:3 }}><ArrowDown size={11} />{p.drop}</span>}</div>
                 </div>
               ))}
             </div>

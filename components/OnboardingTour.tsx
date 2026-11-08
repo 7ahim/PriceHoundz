@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Joyride from "react-joyride";
 import type { Step, CallBackProps, Styles } from "react-joyride";
 import { usePathname } from "next/navigation";
+import { Check } from "lucide-react";
 
 const TOUR_SEEN_KEY      = "pricehound_tour_seen";
 const AN_TOUR_SEEN_KEY   = "pricehound_an_tour_seen";
@@ -168,7 +169,7 @@ function PriceHoundTooltip({ index, step, backProps, closeProps, primaryProps, t
           SKIP
         </button>
         <button {...primaryProps} style={{ background:"var(--accent,#e8ff47)", border:"none", color:"var(--accent-fg,#0a0a0a)", fontFamily:"'DM Mono',monospace", fontSize:11, fontWeight:500, padding:"8px 18px", cursor:"pointer", letterSpacing:"0.06em", marginLeft:"auto" }}>
-          {isLastStep ? "DONE ✓" : "NEXT →"}
+          {isLastStep ? <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>DONE <Check size={12} /></span> : "NEXT →"}
         </button>
       </div>
     </div>

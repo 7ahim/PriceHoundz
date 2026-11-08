@@ -1,5 +1,6 @@
 // app/privacy/page.tsx
 import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 
 export const metadata = {
   title: "Privacy Policy — PriceHound",
@@ -170,8 +171,9 @@ export default function PrivacyPage() {
                       fontFamily: "'DM Mono', monospace", fontSize: 10,
                       color: "var(--muted)", textDecoration: "none", letterSpacing: "0.06em",
                       whiteSpace: "nowrap",
+                      display: "inline-flex", alignItems: "center", gap: 6,
                     }}>
-                      PRIVACY POLICY ↗
+                      PRIVACY POLICY <ExternalLink size={11} />
                     </a>
                   </div>
                 ))}

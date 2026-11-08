@@ -3,6 +3,7 @@
 import { useState, useEffect, createContext, useContext, lazy, Suspense } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { Moon, Sun, LogOut } from "lucide-react";
 
 const TourTriggerButton = dynamic(
   () => import("@/components/OnboardingTour").then((m) => ({ default: m.TourTriggerButton })),
@@ -126,7 +127,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
         /* Theme toggle */
         .ph-theme-toggle { display:flex; align-items:center; gap:5px; }
-        .ph-theme-icon   { font-size:13px; line-height:1; user-select:none; }
+        .ph-theme-icon   { display:inline-flex; align-items:center; line-height:1; user-select:none; }
         .ph-theme-btn {
           width:34px; height:20px;
           background:var(--border2); border:1px solid var(--border2);
@@ -146,6 +147,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           font-family:'DM Mono',monospace; font-size:10px;
           color:var(--muted2); cursor:pointer; letter-spacing:0.06em;
           padding:5px 12px; transition:all 0.2s; white-space:nowrap;
+          display:inline-flex; align-items:center; gap:6px;
         }
         .ph-signout-btn:hover { color:var(--danger); border-color:var(--danger); }
 
@@ -279,11 +281,11 @@ export function DashboardNav({
           <TourTriggerButton onClick={startGuide} />
 
           <div className="ph-theme-toggle">
-            <span className="ph-theme-icon">{theme==="dark" ? "🌙" : "☀️"}</span>
+            <span className="ph-theme-icon">{theme==="dark" ? <Moon size={14} /> : <Sun size={14} />}</span>
             <button className={`ph-theme-btn ${theme}`} onClick={toggle} aria-label="Toggle theme" />
           </div>
           <form action="/auth/signout" method="POST">
-            <button type="submit" className="ph-signout-btn">SIGN OUT ↪</button>
+            <button type="submit" className="ph-signout-btn">SIGN OUT <LogOut size={12} /></button>
           </form>
           {/* Mobile hamburger */}
           <button
@@ -313,8 +315,8 @@ export function DashboardNav({
                 <Link href="/profile" className="ph-mobile-email" onClick={closeDrawer}>{userEmail}</Link>
               )}
               <form action="/auth/signout" method="POST" style={{ marginLeft:"auto" }}>
-                <button type="submit" style={{ background:"transparent", border:"1px solid var(--danger)", color:"var(--danger)", fontFamily:"'DM Mono',monospace", fontSize:11, padding:"6px 14px", cursor:"pointer", letterSpacing:"0.06em" }}>
-                  SIGN OUT ↪
+                <button type="submit" style={{ background:"transparent", border:"1px solid var(--danger)", color:"var(--danger)", fontFamily:"'DM Mono',monospace", fontSize:11, padding:"6px 14px", cursor:"pointer", letterSpacing:"0.06em", display:"inline-flex", alignItems:"center", gap:6 }}>
+                  SIGN OUT <LogOut size={12} />
                 </button>
               </form>
             </div>

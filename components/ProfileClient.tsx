@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Check, TriangleAlert, Package, BarChart3, Bell, Lock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeProvider, DashboardNav } from "@/components/DashboardNav";
 import type { Profile } from "@/types/supabase";
@@ -154,7 +155,7 @@ export default function ProfileClient({ profile, productCount, alertCount, activ
           transition:border-color 0.2s, background 0.2s;
         }
         .pf-link-card:hover { border-color:var(--border2); background:var(--bg2); }
-        .pf-link-icon { font-size:20px; flex-shrink:0; }
+        .pf-link-icon { display:flex; align-items:center; color:var(--accent); flex-shrink:0; }
         .pf-link-title { font-size:13px; font-weight:500; color:var(--text); margin-bottom:2px; }
         .pf-link-desc  { font-size:11px; color:var(--muted2); }
 
@@ -269,8 +270,8 @@ export default function ProfileClient({ profile, productCount, alertCount, activ
                   {saving ? "SAVING…" : "SAVE"}
                 </button>
               </div>
-              {savedMsg && <p className="pf-success" style={{ marginTop: 8 }}>✓ {savedMsg}</p>}
-              {errorMsg && <p className="pf-error"   style={{ marginTop: 8 }}>⚠ {errorMsg}</p>}
+              {savedMsg && <p className="pf-success" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}><Check size={13} /> {savedMsg}</p>}
+              {errorMsg && <p className="pf-error"   style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}><TriangleAlert size={13} /> {errorMsg}</p>}
             </div>
             <div className="pf-field">
               <label className="pf-label">EMAIL ADDRESS</label>
@@ -326,13 +327,13 @@ export default function ProfileClient({ profile, productCount, alertCount, activ
             <div className="pf-section-title">Quick Navigation</div>
             <div className="pf-links-grid">
               {[
-                { href: "/dashboard",                icon: "📦", title: "Tracker",       desc: "View and manage tracked products" },
-                { href: "/dashboard/analytics",      icon: "📊", title: "Analytics",     desc: "Price trends and savings overview" },
-                { href: "/dashboard/notifications",  icon: "🔔", title: "Notifications", desc: "Alert history and preferences" },
-                { href: "/privacy",                  icon: "🔒", title: "Privacy Policy", desc: "How we handle your data" },
+                { href: "/dashboard",                icon: Package, title: "Tracker",       desc: "View and manage tracked products" },
+                { href: "/dashboard/analytics",      icon: BarChart3, title: "Analytics",     desc: "Price trends and savings overview" },
+                { href: "/dashboard/notifications",  icon: Bell, title: "Notifications", desc: "Alert history and preferences" },
+                { href: "/privacy",                  icon: Lock, title: "Privacy Policy", desc: "How we handle your data" },
               ].map((item) => (
                 <Link href={item.href} key={item.href} className="pf-link-card">
-                  <span className="pf-link-icon">{item.icon}</span>
+                  <span className="pf-link-icon"><item.icon size={20} strokeWidth={1.75} /></span>
                   <div>
                     <div className="pf-link-title">{item.title}</div>
                     <div className="pf-link-desc">{item.desc}</div>
@@ -344,7 +345,7 @@ export default function ProfileClient({ profile, productCount, alertCount, activ
 
           {/* ── Danger zone ── */}
           <div className="pf-danger-section">
-            <div className="pf-danger-title">⚠ Danger Zone</div>
+            <div className="pf-danger-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><TriangleAlert size={13} /> Danger Zone</div>
             <p className="pf-danger-desc">
               Deleting your account is permanent and irreversible. All your tracked products,
               price history, and notification logs will be deleted within 7 days.
@@ -366,8 +367,8 @@ export default function ProfileClient({ profile, productCount, alertCount, activ
               This will permanently delete your PriceHound account, all tracked products,
               price history, and notification logs. This action <strong>cannot be undone</strong>.
             </p>
-            <div className="pf-modal-warn">
-              ⚠ {productCount} tracked product{productCount !== 1 ? "s" : ""} and all their price history will be deleted.
+            <div className="pf-modal-warn" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <TriangleAlert size={14} style={{ flexShrink: 0 }} /> <span>{productCount} tracked product{productCount !== 1 ? "s" : ""} and all their price history will be deleted.</span>
             </div>
             <div className="pf-field">
               <label className="pf-label">TYPE "DELETE" TO CONFIRM</label>

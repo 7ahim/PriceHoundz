@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Mail, Check, TriangleAlert, Timer, Target, Inbox } from "lucide-react";
 import type { NotificationLog, TrackedProduct } from "@/types/supabase";
 import { formatPrice } from "@/lib/utils";
 
@@ -56,24 +57,6 @@ export default function NotificationSettings({ logs, products, email }: Props) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 16, alignItems: "start" }}>
           <div>
-            <div style={{ fontSize: 13, color: "var(--muted2)", marginBottom: 8, lineHeight: 1.6 }}>
-              Price drop alerts are sent to your Gmail address. Make sure{" "}
-              <code style={{
-                fontFamily: "'DM Mono', monospace", fontSize: 11,
-                background: "var(--bg3)", padding: "2px 6px",
-                color: "var(--accent)",
-              }}>GMAIL_USER</code> and{" "}
-              <code style={{
-                fontFamily: "'DM Mono', monospace", fontSize: 11,
-                background: "var(--bg3)", padding: "2px 6px",
-                color: "var(--accent)",
-              }}>GMAIL_APP_PASSWORD</code> are set in your{" "}
-              <code style={{
-                fontFamily: "'DM Mono', monospace", fontSize: 11,
-                background: "var(--bg3)", padding: "2px 6px",
-                color: "var(--muted2)",
-              }}>.env.local</code>.
-            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{
                 width: 7, height: 7, borderRadius: "50%",
@@ -114,7 +97,7 @@ export default function NotificationSettings({ logs, products, email }: Props) {
                   animation: "ns-spin 0.7s linear infinite",
                 }} />
               )}
-              {sending ? "SENDING…" : "✉ SEND TEST EMAIL"}
+              {sending ? "SENDING…" : <><Mail size={13} /> SEND TEST EMAIL</>}
             </button>
 
             {testResult && (
@@ -123,8 +106,9 @@ export default function NotificationSettings({ logs, products, email }: Props) {
                 fontSize: 11,
                 color: testResult.ok ? "var(--success)" : "var(--danger)",
                 maxWidth: 220, textAlign: "right", lineHeight: 1.5,
+                display: "flex", alignItems: "flex-start", justifyContent: "flex-end", gap: 6,
               }}>
-                {testResult.ok ? "✓ " : "⚠ "}{testResult.msg}
+                {testResult.ok ? <Check size={12} style={{ flexShrink: 0, marginTop: 2 }} /> : <TriangleAlert size={12} style={{ flexShrink: 0, marginTop: 2 }} />}{testResult.msg}
               </div>
             )}
           </div>
@@ -145,15 +129,15 @@ export default function NotificationSettings({ logs, products, email }: Props) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
           {[
-            { icon: "⏱", title: "Checked every 4 hours", desc: "The cron job runs every 4 hours and scrapes all your active products." },
-            { icon: "🎯", title: "One alert per target", desc: "We send one email when the price first hits your target. Reset by editing your target price." },
-            { icon: "📥", title: "Delivered to your Gmail", desc: "Alerts land in the inbox of the Gmail you signed in with." },
+            { icon: Timer, title: "Checked every 4 hours", desc: "The cron job runs every 4 hours and scrapes all your active products." },
+            { icon: Target, title: "One alert per target", desc: "We send one email when the price first hits your target. Reset by editing your target price." },
+            { icon: Inbox, title: "Delivered to your Gmail", desc: "Alerts land in the inbox of the Gmail you signed in with." },
           ].map((item) => (
             <div key={item.title} style={{
               background: "var(--bg3)", border: "1px solid var(--border)",
               padding: "14px 16px",
             }}>
-              <div style={{ fontSize: 20, marginBottom: 10 }}>{item.icon}</div>
+              <div style={{ marginBottom: 10, color: "var(--accent)" }}><item.icon size={20} strokeWidth={1.75} /></div>
               <div style={{
                 fontFamily: "'Syne', sans-serif", fontWeight: 700,
                 fontSize: 13, letterSpacing: "-0.3px", marginBottom: 6,

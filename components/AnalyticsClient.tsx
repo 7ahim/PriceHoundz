@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BarChart3, TrendingUp, Wallet, CalendarDays, Trophy, Check, ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
 import {
   LineChart, Line, AreaChart, Area,
   BarChart, Bar, XAxis, YAxis,
@@ -241,7 +242,7 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
         .an-platform-count { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted2); flex:0 0 24px; text-align:right; }
 
         .an-empty { text-align:center; padding:80px 32px; }
-        .an-empty-icon  { font-size:48px; margin-bottom:16px; }
+        .an-empty-icon  { display:flex; justify-content:center; color:var(--muted); margin-bottom:16px; }
         .an-empty-title { font-family:'Syne',sans-serif; font-weight:700; font-size:22px; letter-spacing:-0.5px; margin-bottom:8px; color:var(--text); }
         .an-empty-sub   { font-size:14px; color:var(--muted2); font-weight:300; max-width:360px; margin:0 auto 24px; line-height:1.6; }
         .an-empty-btn   { display:inline-block; background:var(--accent); color:var(--accent-fg,#0a0a0a); font-family:'DM Mono',monospace; font-size:12px; font-weight:500; padding:12px 28px; text-decoration:none; letter-spacing:0.06em; }
@@ -279,7 +280,7 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
           {/* ── Empty state ── */}
           {totalProducts === 0 && (
             <div className="an-empty">
-              <div className="an-empty-icon">📊</div>
+              <div className="an-empty-icon"><BarChart3 size={48} strokeWidth={1.25} /></div>
               <div className="an-empty-title">No data yet.</div>
               <p className="an-empty-sub">
                 Add products to your tracker and let PriceHound collect price data.
@@ -343,7 +344,7 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
                   <p className="an-card-sub">Each product indexed to 100 at first scrape — shows relative movement</p>
                   {trendData.length < 2 ? (
                     <div className="an-no-data" style={{ height: 220 }}>
-                      <span>📈</span>
+                      <TrendingUp size={28} strokeWidth={1.5} />
                       <span>Needs at least 2 scrape runs to show trends</span>
                     </div>
                   ) : (
@@ -378,7 +379,7 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
                   <p className="an-card-sub">Total amount saved when alert prices were hit</p>
                   {savingsTimeline.length === 0 ? (
                     <div className="an-no-data" style={{ height: 220 }}>
-                      <span>💰</span>
+                      <Wallet size={28} strokeWidth={1.5} />
                       <span>Savings appear when target prices are hit</span>
                     </div>
                   ) : (
@@ -410,7 +411,7 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
                   <p className="an-card-sub">Number of price readings per day</p>
                   {activityData.length === 0 ? (
                     <div className="an-no-data" style={{ height: 180 }}>
-                      <span>📅</span>
+                      <CalendarDays size={28} strokeWidth={1.5} />
                       <span>No activity yet</span>
                     </div>
                   ) : (
@@ -479,7 +480,7 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
                           />
                         </div>
                         <div className="an-dist-pct" style={{ color: d.hit ? "#6ee7b7" : d.pct < 5 ? "var(--accent)" : "var(--muted2)" }}>
-                          {d.hit ? "✓ HIT" : `+${d.pct.toFixed(0)}%`}
+                          {d.hit ? <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}><Check size={11} /> HIT</span> : `+${d.pct.toFixed(0)}%`}
                         </div>
                       </div>
                     ))}
@@ -492,9 +493,9 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
                 <div className="an-grid-2" style={{ marginBottom: 16 }}>
                   {bestDeal && (
                     <div className="an-highlight">
-                      <div className="an-highlight-label">🏆 BEST DEAL</div>
+                      <div className="an-highlight-label" style={{ display:"flex", alignItems:"center", gap:6 }}><Trophy size={13} /> BEST DEAL</div>
                       <div className="an-highlight-name">{bestDeal.product.name ?? "Unnamed product"}</div>
-                      <div className="an-highlight-val">↓ {bestDeal.dropPct.toFixed(1)}%</div>
+                      <div className="an-highlight-val" style={{ display:"flex", alignItems:"center", gap:4 }}><ArrowDown size={26} strokeWidth={2.5} />{bestDeal.dropPct.toFixed(1)}%</div>
                       <div className="an-highlight-sub">
                         From {fmtINR(bestDeal.firstPrice)} → {fmtINR(bestDeal.product.current_price!)}
                         &nbsp;·&nbsp; saving {fmtINR(bestDeal.drop)}
@@ -504,19 +505,19 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
-                          display: "inline-block", marginTop: 14,
+                          display: "inline-flex", alignItems: "center", gap: 6, marginTop: 14,
                           fontFamily: "'DM Mono',monospace", fontSize: 11,
                           color: "var(--accent)", textDecoration: "none",
                           letterSpacing: "0.06em",
                         }}
                       >
-                        VIEW PRODUCT ↗
+                        VIEW PRODUCT <ExternalLink size={12} />
                       </a>
                     </div>
                   )}
                   {mostVolatile && (
                     <div className="an-highlight" style={{ background: "rgba(255,107,53,0.04)", borderColor: "rgba(255,107,53,0.2)" }}>
-                      <div className="an-highlight-label" style={{ color: "var(--accent2)" }}>📈 MOST VOLATILE</div>
+                      <div className="an-highlight-label" style={{ color: "var(--accent2)", display:"flex", alignItems:"center", gap:6 }}><TrendingUp size={13} /> MOST VOLATILE</div>
                       <div className="an-highlight-name">{mostVolatile.product.name ?? "Unnamed product"}</div>
                       <div className="an-highlight-val" style={{ color: "var(--accent2)" }}>
                         {fmtINR(mostVolatile.range)} swing
@@ -560,8 +561,8 @@ export default function AnalyticsClient({ products, allHistory, notificationLogs
                             </div>
                             <div className="an-spark-meta">
                               {data.length} readings &nbsp;·&nbsp;
-                              <span style={{ color: change <= 0 ? "#6ee7b7" : "#f87171" }}>
-                                {change <= 0 ? "↓" : "↑"} {Math.abs(parseFloat(changePct))}%
+                              <span style={{ color: change <= 0 ? "#6ee7b7" : "#f87171", display:"inline-flex", alignItems:"center", gap:2 }}>
+                                {change <= 0 ? <ArrowDown size={10} /> : <ArrowUp size={10} />} {Math.abs(parseFloat(changePct))}%
                               </span>
                             </div>
 

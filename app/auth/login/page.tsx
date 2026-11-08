@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { TriangleAlert } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
 //  LoginContent — reads search params, must be inside Suspense
@@ -69,8 +70,8 @@ function LoginContent() {
           </div>
 
           {errorMsg && (
-            <div className="login-error">
-              ⚠ {decodeURIComponent(errorMsg)}
+            <div className="login-error" style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <TriangleAlert size={14} style={{ flexShrink:0 }} /> {decodeURIComponent(errorMsg)}
             </div>
           )}
 

@@ -6,6 +6,7 @@
 // "live" mode that re-checks every few minutes while the page is open.
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { RefreshCw, Circle, TriangleAlert, ExternalLink } from "lucide-react";
 import { getCrossData, addCrossLink, removeCrossLink, toggleCrossLink } from "@/lib/crossActions";
 import { CROSS_PLATFORMS } from "@/lib/crossPlatforms";
 import { formatPrice, timeAgo, getPlatformColor } from "@/lib/utils";
@@ -140,6 +141,7 @@ export default function CrossPlatformPanel({ product, onData }: Props) {
   const btn: React.CSSProperties = {
     ...mono, fontSize: 11, letterSpacing: "0.08em", padding: "7px 12px", cursor: "pointer",
     background: "transparent", color: "var(--text)", border: "1px solid var(--border2)",
+    display: "inline-flex", alignItems: "center", gap: 6,
   };
 
   return (
@@ -153,21 +155,21 @@ export default function CrossPlatformPanel({ product, onData }: Props) {
         </div>
         {linked.length > 0 && (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button type="button" style={btn} onClick={refreshAll} disabled={Object.values(busy).some(Boolean)}>↻ REFRESH ALL</button>
+            <button type="button" style={btn} onClick={refreshAll} disabled={Object.values(busy).some(Boolean)}><RefreshCw size={12} /> REFRESH ALL</button>
             <button
               type="button" onClick={() => setLive((v) => !v)}
               title="Re-check all linked platforms every 5 minutes while this page is open"
               style={{ ...btn, color: live ? "var(--bg)" : "var(--text)", background: live ? "var(--success)" : "transparent", borderColor: live ? "var(--success)" : "var(--border2)" }}
             >
-              ● LIVE {live ? "ON" : "OFF"}
+              <Circle size={9} fill="currentColor" /> LIVE {live ? "ON" : "OFF"}
             </button>
           </div>
         )}
       </div>
 
       {error && (
-        <div style={{ ...mono, fontSize: 12, color: "var(--danger)", border: "1px solid var(--danger)", padding: "10px 12px", margin: "14px 0" }}>
-          ⚠ {error}
+        <div style={{ ...mono, fontSize: 12, color: "var(--danger)", border: "1px solid var(--danger)", padding: "10px 12px", margin: "14px 0", display: "flex", alignItems: "center", gap: 8 }}>
+          <TriangleAlert size={14} style={{ flexShrink: 0 }} /> {error}
         </div>
       )}
 
@@ -221,9 +223,9 @@ export default function CrossPlatformPanel({ product, onData }: Props) {
                   </div>
                   {isBest && <span style={{ ...mono, fontSize: 10, letterSpacing: "0.1em", color: "var(--success)", border: "1px solid var(--success)", padding: "3px 8px" }}>BEST PRICE</span>}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <a href={row.url} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: "none" }}>OPEN ↗</a>
+                    <a href={row.url} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: "none" }}>OPEN <ExternalLink size={12} /></a>
                     <button type="button" style={btn} disabled={busy[row.id] || !row.is_active} onClick={() => scrapeRow(row.id)}>
-                      {busy[row.id] ? "…" : "↻"}
+                      {busy[row.id] ? "…" : <RefreshCw size={12} />}
                     </button>
                     <button type="button" style={btn} onClick={() => handleToggle(row)}>{row.is_active ? "PAUSE" : "RESUME"}</button>
                     <button type="button" style={{ ...btn, color: "var(--danger)" }} disabled={busy[row.id]} onClick={() => handleRemove(row)}>REMOVE</button>

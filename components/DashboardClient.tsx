@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef, useCallback } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { LogOut, Menu, TriangleAlert, X, Search, Pencil, RefreshCw, Pause, Play, Check } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
@@ -266,7 +267,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
             </div>
           </Link>
           <form action="/auth/signout" method="POST">
-            <button type="submit" className="db-signout-btn" title="Sign out">↪</button>
+            <button type="submit" className="db-signout-btn" title="Sign out" aria-label="Sign out"><LogOut size={14} /></button>
           </form>
         </div>
       </div>
@@ -379,7 +380,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
         .db-user-info  { flex:1; overflow:hidden; }
         .db-user-name  { font-size:12px; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .db-user-email { font-family:'DM Mono',monospace; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .db-signout-btn{ background:none; border:none; cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); padding:4px; transition:color 0.2s; }
+        .db-signout-btn{ display:flex; align-items:center; background:none; border:none; cursor:pointer; font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); padding:4px; transition:color 0.2s; }
         .db-signout-btn:hover { color:var(--danger); }
 
         /* ── Mobile toggle button (shown in main on mobile) ── */
@@ -419,7 +420,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
 
         /* ── Empty state ── */
         .db-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:60px 24px; text-align:center; }
-        .db-empty-icon  { width:60px; height:60px; border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-size:26px; }
+        .db-empty-icon  { width:60px; height:60px; border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; color:var(--muted2); }
         .db-empty-title { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.5px; color:var(--text); }
         .db-empty-sub   { font-size:13px; color:var(--muted2); font-weight:300; max-width:300px; line-height:1.6; }
 
@@ -580,7 +581,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
           {/* Mobile toggle — only visible on mobile, opens the sidebar drawer */}
           <div style={{ marginBottom:16 }}>
             <button className="db-mobile-toggle" onClick={() => setMobileSidebar(true)}>
-              ☰ {localProducts.length > 0 ? `${localProducts.length} Products` : "Products"}
+              <Menu size={14} /> {localProducts.length > 0 ? `${localProducts.length} Products` : "Products"}
             </button>
           </div>
 
@@ -589,8 +590,8 @@ export default function DashboardClient({ profile, products: initialProducts, al
           )}
           {scrapeError && (
             <div className="db-scrape-error">
-              ⚠ {scrapeError}
-              <button onClick={() => setScrapeError(null)} style={{ marginLeft:"auto",background:"none",border:"none",color:"var(--danger)",cursor:"pointer",fontSize:16 }}>✕</button>
+              <TriangleAlert size={14} style={{ flexShrink:0 }} /> {scrapeError}
+              <button onClick={() => setScrapeError(null)} style={{ marginLeft:"auto",background:"none",border:"none",color:"var(--danger)",cursor:"pointer",display:"flex",alignItems:"center" }} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
 
@@ -613,7 +614,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
           {/* Empty state */}
           {localProducts.length === 0 && (
             <div className="db-empty">
-              <div className="db-empty-icon">🔍</div>
+              <div className="db-empty-icon"><Search size={26} strokeWidth={1.5} /></div>
               <div className="db-empty-title">Nothing tracked yet.</div>
               <p className="db-empty-sub">Add a product URL and your target price. We&apos;ll watch it and email you when it drops.</p>
               <button className="db-add-btn" style={{ width:"auto",padding:"11px 24px" }} onClick={() => setShowAddModal(true)}>
@@ -656,14 +657,14 @@ export default function DashboardClient({ profile, products: initialProducts, al
                   </div>
                 </div>
                 <div className="db-detail-actions">
-                  <button className="db-icon-btn accent" onClick={() => { setEditProduct(selected); setShowEditModal(true); }} disabled={selected._scraping}>✎ EDIT</button>
+                  <button className="db-icon-btn accent" onClick={() => { setEditProduct(selected); setShowEditModal(true); }} disabled={selected._scraping}><Pencil size={12} /> EDIT</button>
                   <button className="db-icon-btn" onClick={() => scrapeNow(selected.id)} disabled={selected._scraping||isPending}>
-                    {selected._scraping ? <><Spinner size={11}/> SCRAPING</> : "↻ REFRESH"}
+                    {selected._scraping ? <><Spinner size={11}/> SCRAPING</> : <><RefreshCw size={12} /> REFRESH</>}
                   </button>
                   <button className="db-icon-btn" onClick={() => handleToggle(selected.id,selected.is_active)} disabled={selected._scraping||isPending}>
-                    {selected.is_active ? "⏸" : "▶"}
+                    {selected.is_active ? <Pause size={13} /> : <Play size={13} />}
                   </button>
-                  <button className="db-icon-btn danger" onClick={() => handleDelete(selected.id)} disabled={isPending}>✕</button>
+                  <button className="db-icon-btn danger" onClick={() => handleDelete(selected.id)} disabled={isPending} aria-label="Delete"><X size={13} /></button>
                 </div>
               </div>
 
@@ -688,7 +689,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
                     {!selected._scraping && selected.current_price!=null
                       ? selected.current_price > selected.target_price
                         ? `${formatPrice(selected.current_price - selected.target_price)} away`
-                        : "✓ target reached"
+                        : <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}><Check size={12} /> target reached</span>
                       : "set by you"}
                   </div>
                 </div>
@@ -756,7 +757,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
           <div className="db-modal">
             <div className="db-modal-title">Track a product</div>
             <div className="db-modal-sub">Paste a product URL from Amazon, Flipkart, or Myntra. We&apos;ll fetch the current price straight away.</div>
-            {addError && <div className="db-error-msg">⚠ {addError}</div>}
+            {addError && <div className="db-error-msg" style={{ display:"flex", alignItems:"center", gap:8 }}><TriangleAlert size={13} style={{ flexShrink:0 }} /> {addError}</div>}
             <form ref={formRef} onSubmit={handleAdd} autoComplete="off">
               {/* Security: novalidate off — let browser validate + server validates too */}
               <div className="db-field">
