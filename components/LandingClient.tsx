@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { ArrowDown, TrendingUp, Settings, Lock, BarChart3, Globe, Moon, Sun } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const TICKER_ITEMS = [
@@ -16,12 +17,12 @@ const TICKER_ITEMS = [
 ];
 
 const FEATURES = [
-  { num: "01", icon: "↓", title: "Price Drop Alerts",    desc: "Set your target price. The moment it's hit, you get an instant Gmail notification." },
-  { num: "02", icon: "📈", title: "Price History Graphs", desc: "See the full price timeline. Know if that \"sale\" is actually a sale." },
-  { num: "03", icon: "⚙",  title: "Auto Scraping",        desc: "Cron-powered scrapers run regularly. Bot-aware, flip-resistant." },
-  { num: "04", icon: "🔒", title: "Gmail OAuth",          desc: "One-click Google sign-in. Your credentials never touch our servers." },
-  { num: "05", icon: "📊", title: "Analytics Dashboard",  desc: "Total savings, best deals, most volatile products — your price intelligence HQ." },
-  { num: "06", icon: "🌐", title: "Multi-Platform",       desc: "Amazon, Flipkart, Croma, Reliance Digital. Paste any URL, we handle the rest." },
+  { num: "01", icon: <ArrowDown size={18} />, title: "Price Drop Alerts",    desc: "Set your target price. The moment it's hit, you get an instant Gmail notification." },
+  { num: "02", icon: <TrendingUp size={18} />, title: "Price History Graphs", desc: "See the full price timeline. Know if that \"sale\" is actually a sale." },
+  { num: "03", icon: <Settings size={18} />,  title: "Auto Scraping",        desc: "Cron-powered scrapers run regularly. Bot-aware, flip-resistant." },
+  { num: "04", icon: <Lock size={18} />, title: "Gmail OAuth",          desc: "One-click Google sign-in. Your credentials never touch our servers." },
+  { num: "05", icon: <BarChart3 size={18} />, title: "Analytics Dashboard",  desc: "Total savings, best deals, most volatile products — your price intelligence HQ." },
+  { num: "06", icon: <Globe size={18} />, title: "Multi-Platform",       desc: "Amazon, Flipkart, Croma, Reliance Digital. Paste any URL, we handle the rest." },
 ];
 
 const STEPS = [
@@ -50,13 +51,6 @@ const PLANS = [
     features: ["Everything in Pro", "Unlimited products", "Up to 4 members", "Shared dashboard", "Family savings report", "Dedicated support"],
     cta: "GET FAMILY PLAN", accent: false,
   },
-];
-
-const ANALYTICS_STATS = [
-  { value: "₹2.4Cr+", label: "Total savings by users",      icon: "💰" },
-  { value: "1.2M+",   label: "Price data points collected",  icon: "📊" },
-  { value: "48,000+", label: "Products tracked",             icon: "📦" },
-  { value: "99.2%",   label: "Alert delivery rate",          icon: "🔔" },
 ];
 
 const PRODUCTS_PREVIEW = [
@@ -232,7 +226,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
 
         /* Theme toggle — always visible, sits between auth and hamburger */
         .lp-theme-wrap { display:flex; align-items:center; gap:5px; flex-shrink:0; }
-        .lp-theme-icon { font-size:13px; line-height:1; user-select:none; }
+        .lp-theme-icon { font-size:13px; line-height:1; user-select:none; display:inline-flex; align-items:center; }
         .lp-theme-btn  { width:34px; height:20px; background:var(--border2); border:1px solid var(--border2); border-radius:10px; position:relative; cursor:none; flex-shrink:0; padding:0; transition:background 0.25s; }
         .lp-theme-btn::after { content:''; position:absolute; top:2px; width:14px; height:14px; border-radius:50%; background:var(--accent); transition:left 0.2s; }
         .lp-theme-btn.dark::after  { left:2px; }
@@ -333,14 +327,6 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
         .lp-step-title { font-family:'Syne',sans-serif; font-weight:700; font-size:15px; color:var(--text); }
         .lp-step-desc  { font-size:13px; color:var(--muted2); line-height:1.6; font-weight:300; }
 
-        /* Analytics stats */
-        .lp-analytics-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:36px; }
-        .lp-analytics-card { background:var(--card); border:1px solid var(--border); padding:24px 18px; text-align:center; transition:background 0.25s,border-color 0.25s,transform 0.2s; }
-        .lp-analytics-card:hover { transform:translateY(-3px); border-color:var(--border2); }
-        .lp-analytics-icon  { font-size:24px; margin-bottom:10px; display:block; }
-        .lp-analytics-value { font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(20px,3vw,32px); letter-spacing:-1.5px; color:var(--accent); margin-bottom:5px; }
-        .lp-analytics-label { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted2); letter-spacing:0.1em; }
-        .lp-analytics-desc  { font-size:14px; color:var(--muted2); line-height:1.7; max-width:560px; font-weight:300; }
 
         /* Pricing */
         .lp-pricing-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
@@ -355,7 +341,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
         .lp-plan-desc   { font-size:13px; color:var(--muted2); margin-bottom:20px; line-height:1.6; font-weight:300; min-height:40px; }
         .lp-plan-features { list-style:none; display:flex; flex-direction:column; gap:9px; margin-bottom:24px; }
         .lp-plan-features li { display:flex; align-items:center; gap:9px; font-size:13px; color:var(--text2); }
-        .lp-plan-features li::before { content:'✓'; color:var(--accent); font-weight:700; flex-shrink:0; font-family:'DM Mono',monospace; font-size:12px; }
+        .lp-plan-features li::before { content:''; flex-shrink:0; width:5px; height:10px; margin:2px 5px 0 3px; border:solid var(--accent); border-width:0 2px 2px 0; transform:rotate(45deg); }
         .lp-plan-cta { display:block; text-align:center; text-decoration:none; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; padding:10px; letter-spacing:0.08em; transition:all 0.2s; border:1px solid var(--border2); color:var(--muted2); }
         .lp-plan-cta:hover { border-color:var(--text); color:var(--text); }
         .lp-plan-cta.featured-cta { background:var(--accent); color:var(--accent-fg); border:none; }
@@ -406,7 +392,6 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
         @media(max-width:1100px) {
           .lp-features-grid { grid-template-columns:repeat(2,1fr); }
           .lp-pricing-grid  { grid-template-columns:1fr 1fr; }
-          .lp-analytics-grid { grid-template-columns:repeat(2,1fr); }
         }
         @media(max-width:1024px) {
           .lp-pricing-grid { grid-template-columns:1fr; max-width:460px; margin:0 auto; }
@@ -450,7 +435,6 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
           .lp-section-title { font-size:clamp(22px,6vw,38px); letter-spacing:-1.5px; margin-bottom:32px; }
           .lp-features-grid { grid-template-columns:1fr; }
           .lp-steps-grid    { grid-template-columns:1fr 1fr; gap:24px; }
-          .lp-analytics-grid { grid-template-columns:1fr 1fr; gap:10px; margin-bottom:24px; }
           .lp-pricing-grid  { grid-template-columns:1fr; max-width:100%; }
           .lp-preview-content { grid-template-columns:1fr; }
           .lp-preview-sidebar { display:none; }
@@ -466,13 +450,11 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
           .lp-hero-actions { flex-direction:column; align-items:stretch; }
           .lp-hero-btn-lg,.lp-hero-btn-outline { text-align:center; justify-content:center; }
           .lp-steps-grid { grid-template-columns:1fr; gap:20px; }
-          .lp-analytics-grid { grid-template-columns:1fr 1fr; gap:8px; }
           .lp-preview-stats { grid-template-columns:1fr; }
           .lp-footer { padding:18px 16px; }
         }
         @media(max-width:360px) {
           .lp-h1 { font-size:28px; }
-          .lp-analytics-grid { grid-template-columns:1fr; }
         }
       `}</style>
 
@@ -491,7 +473,6 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
         {/* Col 2: Centre links */}
         <div className="lp-nav-center">
           <a href="#features"  className="lp-nav-link">Features</a>
-          <a href="#analytics" className="lp-nav-link">Analytics</a>
           <a href="#how"       className="lp-nav-link">How it works</a>
           <a href="#pricing"   className="lp-nav-link">Pricing</a>
           <a href="#preview"   className="lp-nav-link">Preview</a>
@@ -504,7 +485,7 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
 
           {/* Theme toggle — always visible, beside auth on desktop, leftmost of [toggle+hamburger] on mobile */}
           <div className="lp-theme-wrap">
-            <span className="lp-theme-icon">{dark ? "🌙" : "☀️"}</span>
+            <span className="lp-theme-icon">{dark ? <Moon size={14} /> : <Sun size={14} />}</span>
             <button className={`lp-theme-btn ${theme}`} onClick={toggleTheme} aria-label="Toggle theme" style={{ cursor:"none" }} />
           </div>
 
@@ -542,7 +523,6 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
       <div className={`lp-drawer-overlay${mobileOpen ? " open":""}`} onClick={() => setMobileOpen(false)} />
       <div className={`lp-mobile-drawer${mobileOpen ? " open":""}`}>
         <a href="#features"  className="lp-mobile-link" onClick={() => setMobileOpen(false)}>Features <span>→</span></a>
-        <a href="#analytics" className="lp-mobile-link" onClick={() => setMobileOpen(false)}>Analytics <span>→</span></a>
         <a href="#how"       className="lp-mobile-link" onClick={() => setMobileOpen(false)}>How it works <span>→</span></a>
         <a href="#pricing"   className="lp-mobile-link" onClick={() => setMobileOpen(false)}>Pricing <span>→</span></a>
         <a href="#preview"   className="lp-mobile-link" onClick={() => setMobileOpen(false)}>Preview <span>→</span></a>
@@ -634,22 +614,6 @@ export default function LandingClient({ isLoggedIn, userEmail }: Props) {
             </div>
           ))}
         </div>
-      </section>
-
-      {/* Analytics */}
-      <section className="lp-section lp-section-alt" id="analytics">
-        <div className="lp-section-label">by the numbers</div>
-        <h2 className="lp-section-title">Trusted by thousands<br />of smart shoppers.</h2>
-        <div className="lp-analytics-grid">
-          {ANALYTICS_STATS.map((s) => (
-            <div className="lp-analytics-card" key={s.label}>
-              <span className="lp-analytics-icon">{s.icon}</span>
-              <div className="lp-analytics-value">{s.value}</div>
-              <div className="lp-analytics-label">{s.label}</div>
-            </div>
-          ))}
-        </div>
-        <p className="lp-analytics-desc">PriceHound helps thousands of Indian shoppers save on Amazon, Flipkart, Croma and Reliance Digital. Our scraper runs around the clock so you never have to check manually.</p>
       </section>
 
       {/* How it works */}
