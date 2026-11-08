@@ -195,12 +195,25 @@ function parseCromaHtml(html: string): ScrapeResult | null {
 
   if (!price) return null;
 
-  if (!name) {
+  const isGenericName = (n: string | null) =>
+    !n || n.trim().length < 6 || /^(croma|buy|home)\b[\s|\-–]*(online)?$/i.test(n.trim());
+  const cleanName = (n: string) =>
+    n.replace(/^buy\s+/i, "").replace(/\s*[|\-–]\s*croma.*$/i, "").replace(/\s+online.*$/i, "").trim().slice(0, 200);
+
+  if (isGenericName(name)) {
+    name = null;
     for (const sel of NAME_SELECTORS) {
-      const raw = $(sel).first().text().trim();
-      if (raw.length > 3) { name = raw.slice(0, 200); break; }
+      $(sel).each((_, el) => {
+        if (name) return false;
+        const raw = $(el).text().trim();
+        if (!isGenericName(raw)) name = raw.slice(0, 200);
+      });
+      if (name) break;
     }
-    if (!name) name = $('meta[property="og:title"]').attr("content")?.slice(0, 200) ?? null;
+    if (!name) {
+      const og = $('meta[property="og:title"]').attr("content") ?? $("title").text();
+      if (og) name = cleanName(og);
+    }
   }
 
   const bodyText = $("body").text().toLowerCase();
@@ -240,14 +253,14 @@ async function tryNextDataFetch(url: string): Promise<ScrapeResult | null> {
       const res = await fetch(url, {
         headers,
         redirect: "follow",
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(8_000),
       });
-      if (!res.ok) continue;
+      if (!res.ok) { console.warn(`[croma] HTTP ${res.status} (page fetch)`); continue; }
       const html   = await res.text();
       const result = parseCromaHtml(html);
       if (result?.price) return result;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 700));
+      console.warn("[croma] Page fetched but no price found in it (blocked or layout changed)");
+    } catch (e: any) { console.warn(`[croma] page fetch error: ${e?.message}`); }
   }
   return null;
 }
@@ -271,9 +284,9 @@ async function tryCromaApi(sku: string): Promise<ScrapeResult | null> {
           "Referer":          `https://www.croma.com/`,
           "X-Requested-With": "XMLHttpRequest",
         } satisfies Record<string, string>,
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(5_000),
       });
-      if (!res.ok) continue;
+      if (!res.ok) { console.warn(`[croma] HTTP ${res.status} (api ${endpoint})`); continue; }
       const ct = res.headers.get("content-type") ?? "";
       if (!ct.includes("json")) continue;
       const json = await res.json();
@@ -299,19 +312,19 @@ async function tryCrawlerFetch(url: string): Promise<ScrapeResult | null> {
           "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-IN,en;q=0.9",
         },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(8_000),
       });
-      if (!res.ok) continue;
+      if (!res.ok) { console.warn(`[croma] HTTP ${res.status} (crawler fetch)`); continue; }
       const html   = await res.text();
       const result = parseCromaHtml(html);
       if (result?.price) return result;
-    } catch {}
+    } catch (e: any) { console.warn(`[croma] crawler fetch error: ${e?.message}`); }
   }
   return null;
 }
 
 // ── Strategy 4: Puppeteer ────────────────────────────────────
-async function tryPuppeteer(url: string): Promise<ScrapeResult | null> {
+async function tryPuppeteerOnce(url: string, attempt: number): Promise<ScrapeResult | null> {
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
@@ -334,44 +347,82 @@ async function tryPuppeteer(url: string): Promise<ScrapeResult | null> {
       req.continue();
     });
 
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.waitForSelector(PRICE_SELECTORS.join(", "), { timeout: 12_000 }).catch(() => {});
-    await randomDelay(1500, 3000);
+    await page.goto(url, { waitUntil: attempt === 1 ? "domcontentloaded" : "networkidle2", timeout: 20_000 });
 
-    const html = await page.content();
+    // Cloudflare "Just a moment..." challenge usually clears itself in a few seconds
+    for (let i = 0; i < 5; i++) {
+      const t = (await page.title()).toLowerCase();
+      if (!t.includes("just a moment") && !t.includes("attention required")) break;
+      await randomDelay(1500, 2000);
+    }
+
+    await page.waitForSelector(PRICE_SELECTORS.join(", "), { timeout: 8_000 }).catch(() => {});
+    await randomDelay(800, 1500);
+
+    const html   = await page.content();
+    const result = parseCromaHtml(html);
+    if (!result?.price) logDiagnostics(html, attempt);
     await browser.close();
-    return parseCromaHtml(html);
-  } catch {
+    return result;
+  } catch (e: any) {
+    console.warn(`[croma] Puppeteer error (attempt ${attempt}): ${e?.message}`);
     await browser.close().catch(() => {});
     return null;
   }
 }
 
+// Printed when a page loaded but no price could be read, so the cause is visible
+function logDiagnostics(html: string, attempt: number) {
+  const $ = cheerio.load(html);
+  const title   = $("title").text().trim().slice(0, 100);
+  const text    = $("body").text().replace(/\s+/g, " ").trim();
+  const amounts = Array.from(new Set(text.match(/₹\s?[\d,]+(?:\.\d+)?/g) ?? [])).slice(0, 8);
+  console.warn(
+    `[croma] No price on page (attempt ${attempt}) — title: "${title}", html: ${html.length} chars, ` +
+    `₹ amounts seen: ${amounts.join(" | ") || "none"}, text starts: "${text.slice(0, 120)}"`
+  );
+}
+
+async function tryPuppeteer(url: string, timeLeft: () => number): Promise<ScrapeResult | null> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1 && timeLeft() < 25_000) break;
+    const r = await tryPuppeteerOnce(url, attempt);
+    if (r?.price) return r;
+    await randomDelay(1000, 2000);
+  }
+  return null;
+}
+
 // ── Main ──────────────────────────────────────────────────────
+// /api/scrape is limited to 60s, so the cheap HTTP strategies run in
+// parallel and the browser only starts if there is enough time left.
+const TIME_BUDGET_MS = 50_000;
+
 export async function scrapeCroma(url: string): Promise<ScrapeResult> {
   const cleanUrl = normaliseUrl(url);
   const sku      = extractSku(cleanUrl);
+  const started  = Date.now();
+  const timeLeft = () => TIME_BUDGET_MS - (Date.now() - started);
   console.log(`[croma] Scraping ${cleanUrl} (SKU: ${sku ?? "unknown"})`);
 
-  console.log("[croma] Trying __NEXT_DATA__ fetch...");
-  const r1 = await tryNextDataFetch(cleanUrl);
-  if (r1?.price) { console.log(`[croma] __NEXT_DATA__ succeeded: ₹${r1.price}`); return r1; }
+  console.log("[croma] Trying plain fetches (page, API, crawler) in parallel...");
+  const quick = await Promise.all([
+    tryNextDataFetch(cleanUrl),
+    sku ? tryCromaApi(sku) : Promise.resolve(null),
+    tryCrawlerFetch(cleanUrl),
+  ]);
+  const hit = quick.find((r) => r?.price);
+  if (hit?.price) { console.log(`[croma] Plain fetch succeeded: ₹${hit.price}`); return hit; }
 
-  if (sku) {
-    console.log("[croma] Trying product API...");
-    const r2 = await tryCromaApi(sku);
-    if (r2?.price) { console.log(`[croma] API succeeded: ₹${r2.price}`); return r2; }
+  if (timeLeft() > 25_000) {
+    console.log("[croma] Trying Puppeteer...");
+    const r4 = await tryPuppeteer(cleanUrl, timeLeft);
+    if (r4?.price) { console.log(`[croma] Puppeteer succeeded: ₹${r4.price}`); return r4; }
   }
 
-  console.log("[croma] Trying crawler fetch...");
-  const r3 = await tryCrawlerFetch(cleanUrl);
-  if (r3?.price) { console.log(`[croma] Crawler fetch succeeded: ₹${r3.price}`); return r3; }
-
-  console.log("[croma] Trying Puppeteer...");
-  await randomDelay(1500, 3000);
-  const r4 = await tryPuppeteer(cleanUrl);
-  if (r4?.price) { console.log(`[croma] Puppeteer succeeded: ₹${r4.price}`); return r4; }
-
   console.error(`[croma] All strategies failed for ${cleanUrl}`);
-  return { price: null, name: null, imageUrl: null, available: false, error: "All scraping strategies failed for Croma." };
+  return {
+    price: null, name: null, imageUrl: null, available: false,
+    error: "Could not read the price from Croma. It may be blocking this server's IP.",
+  };
 }

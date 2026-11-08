@@ -311,12 +311,12 @@ async function tryMobileSite(mobileUrl: string): Promise<ScrapeResult | null> {
         signal: AbortSignal.timeout(8_000),
       });
 
-      if (!res.ok) continue;
+      if (!res.ok) { console.warn(`[flipkart] HTTP ${res.status} (plain fetch)`); continue; }
 
       const html   = await res.text();
       const result = parseFlipkartHtml(html);
       if (result?.price) return result;
-    } catch {}
+    } catch (e: any) { console.warn(`[flipkart] fetch error: ${e?.message}`); }
   }
   return null;
 }
@@ -403,12 +403,12 @@ async function tryDirectFetch(desktopUrl: string): Promise<ScrapeResult | null> 
         signal: AbortSignal.timeout(8_000),
       });
 
-      if (!res.ok) continue;
+      if (!res.ok) { console.warn(`[flipkart] HTTP ${res.status} (plain fetch)`); continue; }
 
       const html   = await res.text();
       const result = parseFlipkartHtml(html);
       if (result?.price) return result;
-    } catch {}
+    } catch (e: any) { console.warn(`[flipkart] fetch error: ${e?.message}`); }
   }
   return null;
 }
