@@ -37,7 +37,9 @@ export async function POST(request: Request) {
     }
 
     // ── Scrape ───────────────────────────────────────────────
+    console.log(`[/api/scrape] Scraping ${product.url}`);
     const result = await scrapeProduct(product.url);
+    console.log(`[/api/scrape] Result: price=${result.price} error=${result.error ?? "none"}`);
 
     if (!result.price) {
       return NextResponse.json(
@@ -50,10 +52,17 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
 
     // Write price history entry
-    await admin.from("price_history").insert({
+    const { error: historyError } = await admin.from("price_history").insert({
       product_id: product.id,
       price:      result.price,
     });
+    if (historyError) {
+      console.error("[/api/scrape] price_history insert failed:", historyError);
+      return NextResponse.json(
+        { success: false, error: `Price found (₹${result.price}) but saving it failed: ${historyError.message}` },
+        { status: 500 }
+      );
+    }
 
     // Update the product row with current price (+ name/image if missing)
     const updates: Record<string, any> = {
@@ -67,10 +76,17 @@ export async function POST(request: Request) {
       result.price <= product.target_price && !product.notify_sent;
     if (targetHit) updates.notify_sent = true;
 
-    await admin
+    const { error: updateError } = await admin
       .from("tracked_products")
       .update(updates)
       .eq("id", product.id);
+    if (updateError) {
+      console.error("[/api/scrape] tracked_products update failed:", updateError);
+      return NextResponse.json(
+        { success: false, error: `Price found (₹${result.price}) but saving it failed: ${updateError.message}` },
+        { status: 500 }
+      );
+    }
 
     // ── Trigger notification if target hit ───────────────────
     if (targetHit) {

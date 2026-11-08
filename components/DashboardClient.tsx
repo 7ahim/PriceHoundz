@@ -86,9 +86,10 @@ export default function DashboardClient({ profile, products: initialProducts, al
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ productId }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setScrapeError(data.error ?? "Scrape failed — will retry on next cron run.");
+      let data: any = null;
+      try { data = await res.json(); } catch {}
+      if (!res.ok || !data?.success) {
+        setScrapeError(data?.error ?? `Scrape failed (HTTP ${res.status}) — check the terminal running the server.`);
         setLocalProducts((prev) => prev.map((p) => p.id===productId ? {...p,_scraping:false} : p));
         return;
       }
@@ -101,8 +102,8 @@ export default function DashboardClient({ profile, products: initialProducts, al
         setLocalHistory((prev) => [...prev, { id:`opt-${Date.now()}`, product_id:productId, price:data.price, scraped_at:new Date().toISOString() }]);
       }
       await revalidateDashboard();
-    } catch {
-      setScrapeError("Network error — scrape could not be reached.");
+    } catch (err: any) {
+      setScrapeError(`Scrape request failed: ${err?.message ?? "network error"}`);
       setLocalProducts((prev) => prev.map((p) => p.id===productId ? {...p,_scraping:false} : p));
     }
   }, []);

@@ -181,12 +181,20 @@ function parseFlipkartHtml(html: string): ScrapeResult | null {
   if (!price) return null;
 
   // ── Name ────────────────────────────────────────────────
+  const GENERIC = /^(electronics|home|flipkart|mobiles|appliances|fashion|grocery|home & furniture)$/i;
+  const tidy = (n: string) =>
+    n.replace(/^buy\s+/i, "").replace(/\s+(online\s+)?(at|from)\s+best\s+price.*$/i, "")
+     .replace(/\s*[|\-–]\s*flipkart.*$/i, "").replace(/\s+online.*$/i, "").trim().slice(0, 200);
   let name: string | null = null;
   for (const sel of NAME_SELECTORS) {
     const raw = $(sel).first().text().trim();
-    if (raw.length > 4) { name = raw.slice(0, 200); break; }
+    if (raw.length > 4 && !GENERIC.test(raw)) { name = raw.slice(0, 200); break; }
   }
-  if (!name && scriptName) name = scriptName.slice(0, 200);
+  if (!name) {
+    const og = $('meta[property="og:title"]').attr("content") ?? $("title").text();
+    if (og && !GENERIC.test(tidy(og))) name = tidy(og);
+  }
+  if (!name && scriptName && !GENERIC.test(scriptName)) name = scriptName.slice(0, 200);
 
   // ── Image ────────────────────────────────────────────────
   let imageUrl: string | null = null;
