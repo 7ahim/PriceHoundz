@@ -9,7 +9,33 @@ export type Profile = {
   created_at: string;
 };
 
-export type Platform = "amazon" | "flipkart" | "myntra" | "reliancedigital" | "croma" | "poorvika" | "meesho" | "other";
+export type Platform = "amazon" | "flipkart" | "reliancedigital" | "croma" | "poorvika" | "other";
+
+export type CrossPlatformPrice = {
+  id:             string;
+  product_id:     string;
+  user_id:        string;
+  platform:       Platform;
+  url:            string;
+  name:           string | null;
+  image_url:      string | null;
+  current_price:  number | null;
+  confirmed:      boolean;
+  ai_confidence:  number | null;
+  ai_reasoning:   string | null;
+  is_active:      boolean;
+  created_at:     string;
+  updated_at:     string;
+};
+
+export type CrossPriceHistory = {
+  id:                 string;
+  cross_platform_id:  string;
+  product_id:         string;
+  platform:           Platform;
+  price:              number;
+  scraped_at:         string;
+};
 
 export type TrackedProduct = {
   id: string;

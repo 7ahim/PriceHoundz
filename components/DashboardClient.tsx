@@ -13,10 +13,35 @@ import {
 } from "@/lib/actions";
 import { formatPrice, getPlatformLabel, getPlatformColor, timeAgo } from "@/lib/utils";
 import { DashboardNav } from "@/components/DashboardNav";
-import type { Profile, TrackedProduct, PriceHistory } from "@/types/supabase";
+import type { Profile, TrackedProduct, PriceHistory, CrossPlatformPrice, CrossPriceHistory } from "@/types/supabase";
 
-interface Props { profile: Profile | null; products: TrackedProduct[]; allHistory: PriceHistory[]; }
+interface Props {
+  profile:             Profile | null;
+  products:            TrackedProduct[];
+  allHistory:          PriceHistory[];
+  crossPlatformPrices: CrossPlatformPrice[];
+  crossHistory:        CrossPriceHistory[];
+}
 interface OptimisticProduct extends TrackedProduct { _scraping: boolean; }
+
+// Cross-search candidate type
+interface CrossCandidate {
+  platform:      string;
+  url:           string;
+  name:          string | null;
+  price:         number | null;
+  imageUrl:      string | null;
+  isSameProduct: boolean;
+  confidence:    number;
+  reasoning:     string;
+  selected:      boolean; // user toggled
+}
+
+type AddStep =
+  | "form"          // Step 1: enter URL + target price
+  | "searching"     // Step 2: calling /api/cross-search
+  | "confirm"       // Step 3: show AI-verified candidates
+  | "saving";       // Step 4: saving confirmed matches
 
 // Security: HTML-encode output to prevent XSS in rendered strings
 function esc(s: string | null | undefined): string {
@@ -46,17 +71,32 @@ function Spinner({ size=14 }: { size?: number }) {
   );
 }
 
-export default function DashboardClient({ profile, products: initialProducts, allHistory: initialHistory }: Props) {
+export default function DashboardClient({
+  profile,
+  products: initialProducts = [],
+  allHistory: initialHistory = [],
+  crossPlatformPrices: initialCrossPrices = [],
+  crossHistory: initialCrossHistory = [],
+}: Props) {
   const [localProducts, setLocalProducts] = useState<OptimisticProduct[]>(
     initialProducts.map((p) => ({ ...p, _scraping: false }))
   );
   const [localHistory,  setLocalHistory]  = useState<PriceHistory[]>(initialHistory);
+  const [crossPrices]                     = useState<CrossPlatformPrice[]>(initialCrossPrices);
+  const [crossHistory]                    = useState<CrossPriceHistory[]>(initialCrossHistory);
   const [selectedId,    setSelectedId]    = useState<string | null>(initialProducts[0]?.id ?? null);
   const [showAddModal,  setShowAddModal]  = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editProduct,   setEditProduct]   = useState<OptimisticProduct | null>(null);
   const [addError,      setAddError]      = useState<string | null>(null);
   const [scrapeError,   setScrapeError]   = useState<string | null>(null);
+  // Cross-platform search state
+  const [findOnOthers,    setFindOnOthers]    = useState(true);   // opt-in toggle
+  const [addStep,         setAddStep]         = useState<AddStep>("form");
+  const [crossSource,     setCrossSource]     = useState<{ name: string; url: string; price: number | null; platform: string; imageUrl?: string | null } | null>(null);
+  const [crossCandidates, setCrossCandidates] = useState<CrossCandidate[]>([]);
+  const [savedProductId,  setSavedProductId]  = useState<string | null>(null);
+  const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   // Mobile sidebar state — controls the collapsible sidebar overlay on mobile
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [isPending,     startTransition]  = useTransition();
@@ -75,6 +115,63 @@ export default function DashboardClient({ profile, products: initialProducts, al
   const initials      = profile?.full_name
     ? profile.full_name.split(" ").map((n) => n[0]).join("").slice(0,2).toUpperCase()
     : profile?.email?.[0]?.toUpperCase() ?? "?";
+
+  // ── Cross-platform chart data for the selected product ───────
+  // One entry per confirmed cross-platform tracker. Each becomes a Line in the chart.
+  const selectedCrossPrices = crossPrices.filter((c) => c.product_id === selectedId);
+
+  // Platform colour map for chart lines
+  const PLATFORM_COLORS: Record<string, string> = {
+    flipkart:        "#2874f0",
+    croma:           "#00a6a0",
+    reliancedigital: "#e2231a",
+    poorvika:        "#e8251a",
+    amazon:          "#ff9900",
+    other:           "#9a9a9a",
+  };
+
+  // Build a unified timeline: merge primary history + all cross histories by date,
+  // each platform gets its own key so Recharts can draw separate Lines.
+  const chartData = (() => {
+    // Collect all unique dates across primary + cross histories
+    const primaryKey = "primary";
+    const allDates   = new Set<string>();
+
+    history.forEach((h) => allDates.add(h.date));
+    selectedCrossPrices.forEach((cp) => {
+      crossHistory
+        .filter((ch) => ch.cross_platform_id === cp.id)
+        .forEach((ch) => {
+          const d = new Date(ch.scraped_at).toLocaleDateString("en-IN",{month:"short",day:"numeric"});
+          allDates.add(d);
+        });
+    });
+
+    // For each date build one row with price per platform
+    const dateList = [...allDates].sort((a, b) => {
+      // Sort by date — parse "3 Jan" style
+      return new Date("2024 " + a).getTime() - new Date("2024 " + b).getTime();
+    });
+
+    return dateList.map((date) => {
+      const row: Record<string, any> = { date };
+      // Primary source price
+      const primaryPoint = history.find((h) => h.date === date);
+      if (primaryPoint) row[primaryKey] = primaryPoint.price;
+      // Cross-platform prices
+      selectedCrossPrices.forEach((cp) => {
+        const key   = cp.platform;
+        const point = crossHistory
+          .filter((ch) => ch.cross_platform_id === cp.id)
+          .find((ch) => new Date(ch.scraped_at).toLocaleDateString("en-IN",{month:"short",day:"numeric"}) === date);
+        if (point) row[key] = point.price;
+      });
+      return row;
+    });
+  })();
+
+  // Decide whether to show the merged chart or the simple single-line chart
+  const hasCrossData = selectedCrossPrices.length > 0 && crossHistory.some((ch) => selectedCrossPrices.some((cp) => cp.id === ch.cross_platform_id));
 
   // ── scrapeNow ──────────────────────────────────────────────
   const scrapeNow = useCallback(async (productId: string) => {
@@ -107,7 +204,14 @@ export default function DashboardClient({ profile, products: initialProducts, al
     }
   }, []);
 
-  // ── handleAdd ──────────────────────────────────────────────
+  // ── helpers ───────────────────────────────────────────────
+  const resetAddModal = () => {
+    setAddStep("form"); setShowAddModal(false);
+    setAddError(null); setCrossCandidates([]); setCrossSource(null);
+    setSavedProductId(null); setPendingFormData(null);
+  };
+
+  // ── Step 1: validate → save to DB → [optionally] cross-search
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setAddError(null);
     const fd    = new FormData(e.currentTarget);
@@ -115,11 +219,17 @@ export default function DashboardClient({ profile, products: initialProducts, al
     const name  = (fd.get("name") as string).trim();
     const tpRaw = fd.get("target_price") as string;
 
-    // Client-side validation (server also validates)
     if (!url.startsWith("http")) { setAddError("Please enter a valid URL starting with http."); return; }
     const tp = parseFloat(tpRaw);
     if (isNaN(tp) || tp <= 0) { setAddError("Target price must be a positive number."); return; }
 
+    // Move to searching step immediately so the modal transitions
+    setAddStep("searching");
+    setPendingFormData(fd);
+    setMobileSidebar(false);
+    formRef.current?.reset();
+
+    // ── Save the primary product to DB ───────────────────────
     const tempId = `temp-${Date.now()}`;
     const optimistic: OptimisticProduct = {
       id:tempId, user_id:profile?.id??"", url, name:name||null, image_url:null,
@@ -128,27 +238,173 @@ export default function DashboardClient({ profile, products: initialProducts, al
       created_at:new Date().toISOString(), updated_at:new Date().toISOString(),
       _scraping:true,
     };
-    setShowAddModal(false); setMobileSidebar(false); formRef.current?.reset();
-    setLocalProducts((prev) => [optimistic,...prev]); setSelectedId(tempId);
+    setLocalProducts((prev) => [optimistic,...prev]);
+    setSelectedId(tempId);
 
+    let realProductId: string | null = null;
     try {
       const result = await addProduct(fd);
       if (result?.error) {
         setAddError(result.error);
-        setLocalProducts((prev) => prev.filter((p) => p.id!==tempId));
+        setLocalProducts((prev) => prev.filter((p) => p.id !== tempId));
         setSelectedId(localProducts[0]?.id ?? null);
-        setShowAddModal(true); return;
+        setAddStep("form"); setShowAddModal(true); return;
       }
-      const realId = result.productId!;
-      setLocalProducts((prev) => prev.map((p) => p.id===tempId ? {...p,id:realId} : p));
-      setSelectedId(realId);
-      await scrapeNow(realId);
+      realProductId = result.productId!;
+      setSavedProductId(realProductId);
+      setLocalProducts((prev) => prev.map((p) => p.id===tempId ? {...p, id:realProductId!} : p));
+      setSelectedId(realProductId);
     } catch {
       setAddError("Failed to save. Please try again.");
-      setLocalProducts((prev) => prev.filter((p) => p.id!==tempId));
+      setLocalProducts((prev) => prev.filter((p) => p.id !== tempId));
       setSelectedId(localProducts[0]?.id ?? null);
-      setShowAddModal(true);
+      setAddStep("form"); setShowAddModal(true); return;
     }
+
+    // ── Scrape primary product — we need name+price for cross-search
+    // Run scrapeNow and capture its result for passing to cross-search
+    let scrapedName:  string | null = name || null;
+    let scrapedPrice: number | null = null;
+    let scrapedPlatform = "other";
+
+    try {
+      const scrapeRes = await fetch("/api/scrape", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ productId: realProductId }),
+      });
+      const scrapeData = await scrapeRes.json();
+      if (scrapeData.success && scrapeData.price) {
+        scrapedPrice    = scrapeData.price;
+        scrapedName     = scrapeData.name ?? scrapedName;
+        // Update optimistic product with scraped data
+        setLocalProducts((prev) => prev.map((p) =>
+          p.id===realProductId
+            ? { ...p, _scraping:false, current_price:scrapeData.price, name:scrapeData.name??p.name, image_url:scrapeData.imageUrl??p.image_url }
+            : p
+        ));
+        if (scrapeData.price) {
+          setLocalHistory((prev) => [...prev, {
+            id: `opt-${Date.now()}`, product_id: realProductId!, price: scrapeData.price, scraped_at: new Date().toISOString(),
+          }]);
+        }
+      } else {
+        // Scrape failed — mark product as not scraping
+        setLocalProducts((prev) => prev.map((p) => p.id===realProductId ? {...p, _scraping:false} : p));
+      }
+
+      // Detect platform from URL
+      const { detectPlatform: dp } = await import("@/lib/utils");
+      scrapedPlatform = dp(url);
+    } catch {
+      setLocalProducts((prev) => prev.map((p) => p.id===realProductId ? {...p, _scraping:false} : p));
+    }
+
+    // ── If user did not opt in, just close ───────────────────
+    if (!findOnOthers) {
+      await revalidateDashboard();
+      setAddStep("form"); setShowAddModal(false);
+      setSavedProductId(null); setPendingFormData(null);
+      return;
+    }
+
+    // ── Cross-platform search — pass scraped data, no re-scrape ─
+    // Build the best possible product name for search
+    const searchName = (scrapedName || name || "").trim();
+
+    // If we have no product name at all, we can't search other platforms
+    if (!searchName) {
+      await revalidateDashboard();
+      resetAddModal();
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/cross-search", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          productName:    searchName,
+          productPrice:   scrapedPrice,
+          sourcePlatform: scrapedPlatform,
+          targetPrice:    tp,
+        }),
+      });
+
+      let data: any = {};
+      try { data = await res.json(); } catch {}
+
+      const candidates: CrossCandidate[] = Array.isArray(data.candidates)
+        ? data.candidates.map((c: any) => ({
+            platform:      c.platform,
+            url:           c.url,
+            name:          c.name,
+            price:         c.price,
+            imageUrl:      c.imageUrl,
+            isSameProduct: c.isSameProduct,
+            confidence:    c.confidence,
+            reasoning:     c.reasoning,
+            selected:      c.isSameProduct && c.confidence >= 0.65,
+          }))
+        : [];
+
+      if (candidates.length === 0) {
+        // Nothing found — close normally
+        await revalidateDashboard();
+        resetAddModal();
+        return;
+      }
+
+      // Set source + candidates BEFORE changing step so both are ready when confirm renders
+      const source = data.source ?? {
+        name:     searchName,
+        url,
+        price:    scrapedPrice,
+        platform: scrapedPlatform,
+      };
+      setCrossSource(source);
+      setCrossCandidates(candidates);
+      // Small tick to let React commit the above state before we transition
+      await new Promise((r) => setTimeout(r, 0));
+      setAddStep("confirm");
+    } catch (err) {
+      console.error("[cross-search client] failed:", err);
+      await revalidateDashboard();
+      resetAddModal();
+    }
+  };
+
+  // ── Step 3: confirm cross-platform choices → save ───────────
+  const handleConfirmCross = async (saveSelected: boolean) => {
+    if (!saveSelected || !savedProductId || crossCandidates.filter((c) => c.selected).length === 0) {
+      await revalidateDashboard();
+      resetAddModal(); return;
+    }
+
+    setAddStep("saving");
+
+    try {
+      await fetch("/api/cross-search/confirm", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          productId: savedProductId,
+          confirmed: crossCandidates.filter((c) => c.selected).map((c) => ({
+            platform:   c.platform,
+            url:        c.url,
+            name:       c.name,
+            price:      c.price,
+            imageUrl:   c.imageUrl,
+            confidence: c.confidence,
+            reasoning:  c.reasoning,
+          })),
+        }),
+      });
+    } catch {}
+
+    await revalidateDashboard();
+    resetAddModal();
   };
 
   const handleDelete = (id: string) => {
@@ -178,7 +434,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
   const sidebarInner = (
     <>
       <div className="db-sidebar-top">
-        <button className="db-add-btn" onClick={() => { setShowAddModal(true); setMobileSidebar(false); }}>
+        <button className="db-add-btn" onClick={() => { setAddStep("form"); setShowAddModal(true); setMobileSidebar(false); }}>
           + TRACK NEW PRODUCT
         </button>
       </div>
@@ -577,7 +833,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
               <div className="db-empty-icon">🔍</div>
               <div className="db-empty-title">Nothing tracked yet.</div>
               <p className="db-empty-sub">Add a product URL and your target price. We&apos;ll watch it and email you when it drops.</p>
-              <button className="db-add-btn" style={{ width:"auto",padding:"11px 24px" }} onClick={() => setShowAddModal(true)}>
+              <button className="db-add-btn" style={{ width:"auto",padding:"11px 24px" }} onClick={() => { setAddStep("form"); setShowAddModal(true); }}>
                 + TRACK YOUR FIRST PRODUCT
               </button>
             </div>
@@ -669,67 +925,455 @@ export default function DashboardClient({ profile, products: initialProducts, al
                 </div>
               </div>
 
-              {/* Chart */}
-              <div className="db-chart-section">
+              {/* Chart — overlays primary + all confirmed cross-platform histories */}
+              <div className="db-chart-section db-chart-section">
                 <div className="db-chart-header">
                   <div className="db-chart-title">PRICE HISTORY</div>
-                  <div className="db-chart-legend">
-                    <div className="db-chart-legend-item"><div className="db-chart-legend-line" style={{ background:"var(--accent)" }}/> Price</div>
-                    <div className="db-chart-legend-item"><div className="db-chart-legend-line" style={{ borderTop:"2px dashed var(--accent2)",height:0 }}/> Target</div>
+                  {/* Legend */}
+                  <div className="db-chart-legend" style={{ flexWrap:"wrap", gap:"10px 16px" }}>
+                    {/* Primary source */}
+                    <div className="db-chart-legend-item">
+                      <div className="db-chart-legend-line" style={{ background:"var(--accent)" }}/>
+                      <span>{selected ? getPlatformLabel(selected.platform) : "Source"}</span>
+                    </div>
+                    {/* Cross-platform lines */}
+                    {selectedCrossPrices.map((cp) => (
+                      <div className="db-chart-legend-item" key={cp.id}>
+                        <div className="db-chart-legend-line" style={{ background: PLATFORM_COLORS[cp.platform] ?? "#9a9a9a" }}/>
+                        <span>{getPlatformLabel(cp.platform)}</span>
+                      </div>
+                    ))}
+                    {/* Target dashed line */}
+                    <div className="db-chart-legend-item">
+                      <div className="db-chart-legend-line" style={{ borderTop:"2px dashed var(--accent2)", height:0 }}/>
+                      <span>Target</span>
+                    </div>
                   </div>
                 </div>
-                {selected._scraping && history.length===0 ? (
+
+                {selected._scraping && history.length === 0 && !hasCrossData ? (
                   <div className="db-no-history"><Spinner size={24}/><span>Scraping price data…</span></div>
-                ) : history.length===0 ? (
-                  <div className="db-no-history">No price data yet — check back after the first scrape.</div>
+                ) : history.length === 0 && !hasCrossData ? (
+                  <div className="db-no-history">No price data yet — check back after the first cron run.</div>
                 ) : (
                   <ResponsiveContainer width="100%" height={260}>
-                    <LineChart data={history} margin={{ top:4,right:8,left:0,bottom:0 }}>
+                    <LineChart
+                      data={hasCrossData ? chartData : history}
+                      margin={{ top:4, right:8, left:0, bottom:0 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="color-mix(in srgb,var(--text) 6%,transparent)" />
-                      <XAxis dataKey="date" tick={{ fontFamily:"'DM Mono',monospace",fontSize:10,fill:"var(--muted)" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontFamily:"'DM Mono',monospace",fontSize:10,fill:"var(--muted)" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}K`} width={48} />
-                      <Tooltip content={<PriceTooltip />} />
-                      <ReferenceLine y={selected.target_price} stroke="var(--accent2)" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.7}
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontFamily:"'DM Mono',monospace", fontSize:10, fill:"var(--muted)" }}
+                        axisLine={false} tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontFamily:"'DM Mono',monospace", fontSize:10, fill:"var(--muted)" }}
+                        axisLine={false} tickLine={false}
+                        tickFormatter={(v) => `₹${(v/1000).toFixed(0)}K`}
+                        width={48}
+                      />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div style={{ background:"var(--card)", border:"1px solid var(--border2)", padding:"10px 14px", fontFamily:"'DM Mono',monospace", fontSize:11 }}>
+                              <div style={{ color:"var(--muted)", marginBottom:6 }}>{label}</div>
+                              {payload.map((p: any, i: number) => (
+                                <div key={i} style={{ color: p.stroke ?? p.color, marginBottom:3 }}>
+                                  {p.name === "primary" ? getPlatformLabel(selected?.platform) : getPlatformLabel(p.name)}
+                                  : {formatPrice(p.value)}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }}
+                      />
+                      <ReferenceLine
+                        y={selected.target_price}
+                        stroke="var(--accent2)" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.7}
                         label={{ value:"Target", fill:"var(--accent2)", fontSize:10, fontFamily:"'DM Mono',monospace", position:"insideTopRight" }}
                       />
-                      <Line type="monotone" dataKey="price" stroke="var(--accent)" strokeWidth={2} dot={false} activeDot={{ r:4,fill:"var(--accent)",strokeWidth:0 }} />
+                      {/* Primary source line — always accent yellow */}
+                      {hasCrossData ? (
+                        <Line
+                          type="monotone" dataKey="primary" name="primary"
+                          stroke="var(--accent)" strokeWidth={2.5}
+                          dot={false} activeDot={{ r:4, fill:"var(--accent)", strokeWidth:0 }}
+                          connectNulls
+                        />
+                      ) : (
+                        <Line
+                          type="monotone" dataKey="price" name="primary"
+                          stroke="var(--accent)" strokeWidth={2.5}
+                          dot={false} activeDot={{ r:4, fill:"var(--accent)", strokeWidth:0 }}
+                        />
+                      )}
+                      {/* One Line per confirmed cross-platform tracker */}
+                      {hasCrossData && selectedCrossPrices.map((cp) => (
+                        <Line
+                          key={cp.id}
+                          type="monotone"
+                          dataKey={cp.platform}
+                          name={cp.platform}
+                          stroke={PLATFORM_COLORS[cp.platform] ?? "#9a9a9a"}
+                          strokeWidth={1.8}
+                          dot={false}
+                          activeDot={{ r:3, strokeWidth:0 }}
+                          connectNulls
+                          strokeDasharray={cp.platform === "reliancedigital" ? "5 3" : undefined}
+                        />
+                      ))}
                     </LineChart>
                   </ResponsiveContainer>
                 )}
               </div>
+
+              {/* Cross-platform prices panel — shows current price on each platform */}
+              {selectedCrossPrices.length > 0 && (
+                <div style={{ background:"var(--bg2)", border:"1px solid var(--border)", padding:"18px 20px", marginBottom:20, transition:"background 0.25s,border-color 0.25s" }}>
+                  <div style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:"var(--muted)", letterSpacing:"0.12em", marginBottom:14, textTransform:"uppercase" }}>
+                    Price Comparison — Other Platforms
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:12 }}>
+                    {selectedCrossPrices.map((cp) => {
+                      const isLowest = cp.current_price != null && selectedCrossPrices.every(
+                        (other) => other.id === cp.id || !other.current_price || other.current_price >= cp.current_price!
+                      ) && (selected.current_price == null || cp.current_price! < selected.current_price);
+                      const hitTarget = cp.current_price != null && cp.current_price <= selected.target_price;
+                      const platColor = PLATFORM_COLORS[cp.platform] ?? "#9a9a9a";
+                      return (
+                        <div key={cp.id} style={{
+                          background:"var(--bg3)", border:`1px solid ${hitTarget ? "color-mix(in srgb,var(--success) 35%,transparent)" : "var(--border)"}`,
+                          padding:"12px 14px", position:"relative",
+                        }}>
+                          {isLowest && (
+                            <div style={{ position:"absolute", top:-1, right:10, background:"var(--success)", color:"#0a0a0a", fontFamily:"'DM Mono',monospace", fontSize:8, fontWeight:700, padding:"2px 8px", letterSpacing:"0.1em" }}>
+                              LOWEST
+                            </div>
+                          )}
+                          <div style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:platColor, letterSpacing:"0.08em", marginBottom:6 }}>
+                            {getPlatformLabel(cp.platform)}
+                          </div>
+                          <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:20, letterSpacing:"-0.5px", color: hitTarget ? "var(--success)" : "var(--text)" }}>
+                            {cp.current_price ? formatPrice(cp.current_price) : "—"}
+                          </div>
+                          {cp.current_price && selected.current_price && (
+                            <div style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:"var(--muted)", marginTop:4 }}>
+                              {cp.current_price < selected.current_price
+                                ? `↓ ${formatPrice(selected.current_price - cp.current_price)} cheaper`
+                                : cp.current_price > selected.current_price
+                                ? `↑ ${formatPrice(cp.current_price - selected.current_price)} more`
+                                : "Same price"
+                              }
+                            </div>
+                          )}
+                          {hitTarget && (
+                            <div style={{ fontFamily:"'DM Mono',monospace", fontSize:9, color:"var(--success)", marginTop:4, letterSpacing:"0.06em" }}>
+                              ✓ TARGET HIT
+                            </div>
+                          )}
+                          <a href={cp.url} target="_blank" rel="noopener noreferrer"
+                            style={{ fontFamily:"'DM Mono',monospace", fontSize:9, color:"var(--muted)", textDecoration:"none", display:"block", marginTop:6, letterSpacing:"0.05em" }}
+                          >
+                            VIEW ↗
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
             </>
           )}
         </main>
       </div>
 
-      {/* ── Add Modal ── */}
-      {showAddModal && (
-        <div className="db-modal-overlay" onClick={(e) => e.target===e.currentTarget && setShowAddModal(false)}>
-          <div className="db-modal">
-            <div className="db-modal-title">Track a product</div>
-            <div className="db-modal-sub">Paste a product URL from Amazon, Flipkart, or Myntra. We&apos;ll fetch the current price straight away.</div>
-            {addError && <div className="db-error-msg">⚠ {addError}</div>}
-            <form ref={formRef} onSubmit={handleAdd} autoComplete="off">
-              {/* Security: novalidate off — let browser validate + server validates too */}
-              <div className="db-field">
-                <label className="db-label">PRODUCT URL</label>
-                <input className="db-input" type="url" name="url" placeholder="https://www.amazon.in/dp/..." required maxLength={2000} />
+      {/* ── Add Modal — multi-step ──
+          The modal stays open whenever:
+          - addStep is "form" AND showAddModal is true (normal open)
+          - addStep is anything other than "form" (searching / confirm / saving)
+          This means once the form submits, the modal never accidentally disappears
+          mid-flow even if showAddModal gets reset somewhere.
+      ── */}
+      {(showAddModal || addStep !== "form") && (
+        <div className="db-modal-overlay" onClick={(e) => {
+          // Only allow dismiss via click-outside when on the form step
+          if (e.target !== e.currentTarget) return;
+          if (addStep === "form") resetAddModal();
+        }}>
+          <div className="db-modal" style={{ maxWidth: addStep === "confirm" ? 640 : 480 }}>
+
+            {/* ── STEP 1: Form ── */}
+            {addStep === "form" && showAddModal && (
+              <>
+                <div className="db-modal-title">Track a product</div>
+                <div className="db-modal-sub">
+                  Paste a product URL from Amazon, Flipkart, Croma, Reliance Digital, or Poorvika.
+                </div>
+                {addError && <div className="db-error-msg">⚠ {addError}</div>}
+                <form ref={formRef} onSubmit={handleAdd} autoComplete="off">
+                  <div className="db-field">
+                    <label className="db-label">PRODUCT URL</label>
+                    <input className="db-input" type="url" name="url" placeholder="https://www.amazon.in/dp/..." required maxLength={2000} />
+                  </div>
+                  <div className="db-field">
+                    <label className="db-label">PRODUCT NAME (optional)</label>
+                    <input className="db-input" type="text" name="name" placeholder="e.g. Sony WH-1000XM5" maxLength={200} />
+                  </div>
+                  <div className="db-field">
+                    <label className="db-label">TARGET PRICE (₹)</label>
+                    <input className="db-input" type="number" name="target_price" placeholder="e.g. 22000" min="1" max="9999999" step="1" required />
+                  </div>
+
+                  {/* ── Opt-in toggle for cross-platform search ── */}
+                  <div
+                    onClick={() => setFindOnOthers((v) => !v)}
+                    style={{
+                      display:"flex", alignItems:"flex-start", gap:12, padding:"14px 16px",
+                      background: findOnOthers
+                        ? "color-mix(in srgb,var(--accent) 6%,transparent)"
+                        : "var(--bg3)",
+                      border: `1px solid ${findOnOthers
+                        ? "color-mix(in srgb,var(--accent) 30%,transparent)"
+                        : "var(--border)"}`,
+                      cursor:"pointer", transition:"all 0.18s", marginBottom:18,
+                      userSelect:"none",
+                    }}
+                  >
+                    {/* Custom checkbox */}
+                    <div style={{
+                      width:18, height:18, border:`2px solid ${findOnOthers ? "var(--accent)" : "var(--border2)"}`,
+                      background: findOnOthers ? "var(--accent)" : "transparent",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      flexShrink:0, marginTop:1, transition:"all 0.15s",
+                    }}>
+                      {findOnOthers && <span style={{ color:"var(--accent-fg,#0a0a0a)", fontSize:11, lineHeight:1, fontWeight:700 }}>✓</span>}
+                    </div>
+                    <div>
+                      <div style={{ fontFamily:"'DM Mono',monospace", fontSize:11, color: findOnOthers ? "var(--accent)" : "var(--muted2)", letterSpacing:"0.06em", fontWeight:500, marginBottom:4 }}>
+                        FIND ON OTHER PLATFORMS
+                      </div>
+                      <div style={{ fontSize:12, color:"var(--muted2)", lineHeight:1.6, fontWeight:300 }}>
+                        We&apos;ll search Flipkart, Amazon, Croma, Reliance Digital, and Poorvika for the same product and show you prices side-by-side. Gemini AI verifies each match.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="db-modal-actions">
+                    <button type="button" className="db-btn-cancel" onClick={() => { resetAddModal(); }}>CANCEL</button>
+                    <button type="submit" className="db-btn-submit" disabled={isPending}>
+                      {isPending ? <><Spinner size={12}/> SAVING…</> : findOnOthers ? "TRACK + FIND ON OTHERS →" : "START TRACKING →"}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+
+            {/* ── STEP 2: Searching ── */}
+            {addStep === "searching" && (
+              <div style={{ textAlign:"center", padding:"36px 20px" }}>
+                <div style={{ display:"flex", justifyContent:"center", marginBottom:20 }}><Spinner size={36} /></div>
+                <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:19, color:"var(--text)", marginBottom:10, letterSpacing:"-0.3px" }}>
+                  {findOnOthers ? "Searching other platforms…" : "Saving & scraping product…"}
+                </div>
+                {findOnOthers && (
+                  <>
+                    <p style={{ fontFamily:"'DM Mono',monospace", fontSize:12, color:"var(--muted2)", lineHeight:1.7, marginBottom:16 }}>
+                      Scraping your product, then searching Flipkart, Amazon,<br />
+                      Croma, Reliance Digital &amp; Poorvika in parallel.<br />
+                      <span style={{ color:"var(--accent)" }}>Gemini AI</span> verifies every match.
+                    </p>
+                    <div style={{ display:"flex", justifyContent:"center", gap:8, flexWrap:"wrap" }}>
+                      {["Flipkart","Amazon","Croma","Reliance Digital","Poorvika"].map((p) => (
+                        <span key={p} style={{ fontFamily:"'DM Mono',monospace", fontSize:9, color:"var(--muted)", padding:"3px 10px", border:"1px solid var(--border)", letterSpacing:"0.06em" }}>
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="db-field">
-                <label className="db-label">PRODUCT NAME (optional)</label>
-                <input className="db-input" type="text" name="name" placeholder="e.g. Sony WH-1000XM5" maxLength={200} />
+            )}
+
+            {/* ── STEP 3: Confirm cross-platform matches ── */}
+            {addStep === "confirm" && (
+              <>
+                <div className="db-modal-title">Found on other platforms</div>
+                <div className="db-modal-sub" style={{ marginBottom:16 }}>
+                  Gemini AI analysed each result. Toggle the ones you want to track. All selected platforms will appear in your price history chart.
+                </div>
+
+                {/* Source product */}
+                <div style={{
+                  background:"color-mix(in srgb,var(--accent) 6%,transparent)",
+                  border:"1px solid color-mix(in srgb,var(--accent) 25%,transparent)",
+                  padding:"10px 14px", marginBottom:14,
+                  fontFamily:"'DM Mono',monospace", fontSize:11, borderRadius:2,
+                }}>
+                  <div style={{ color:"var(--accent)", letterSpacing:"0.1em", marginBottom:5 }}>✓ SOURCE PRODUCT (saved &amp; being scraped)</div>
+                  <div style={{ color:"var(--text)", fontWeight:500, fontSize:13, marginBottom:2 }}>
+                    {crossSource?.name ?? "Your product"}
+                  </div>
+                  <div style={{ color:"var(--muted2)" }}>
+                    {getPlatformLabel(crossSource?.platform ?? null)} · {formatPrice(crossSource?.price)}
+                    {crossSource?.url && (
+                      <>
+                        &nbsp;·&nbsp;
+                        <a href={crossSource.url} target="_blank" rel="noopener noreferrer"
+                          style={{ color:"var(--accent)", textDecoration:"none" }}>
+                          View ↗
+                        </a>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Candidates */}
+                <div style={{ display:"flex", flexDirection:"column", gap:10, maxHeight:360, overflowY:"auto", marginBottom:16, paddingRight:4 }}>
+                  {crossCandidates.map((c, idx) => {
+                    const confPct   = Math.round(c.confidence * 100);
+                    const confColor = c.confidence >= 0.75 ? "var(--success)" : c.confidence >= 0.5 ? "var(--accent)" : "var(--muted2)";
+                    const platColor = getPlatformColor(c.platform);
+
+                    // Get a clean display name — strip extremely long names
+                    const displayName = c.name
+                      ? c.name.length > 70 ? c.name.slice(0, 67) + "…" : c.name
+                      : "Product found (name unavailable)";
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          border:`1px solid ${c.selected
+                            ? "color-mix(in srgb,var(--accent) 40%,transparent)"
+                            : "var(--border)"}`,
+                          background: c.selected
+                            ? "color-mix(in srgb,var(--accent) 5%,transparent)"
+                            : "var(--bg3)",
+                          borderRadius:2, overflow:"hidden",
+                          transition:"all 0.15s",
+                        }}
+                      >
+                        {/* Top row: checkbox + platform + price — clickable to toggle */}
+                        <div
+                          onClick={() => setCrossCandidates((prev) =>
+                            prev.map((x, i) => i===idx ? {...x, selected:!x.selected} : x)
+                          )}
+                          style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", cursor:"pointer" }}
+                        >
+                          {/* Checkbox */}
+                          <div style={{
+                            width:16, height:16, flexShrink:0,
+                            border:`2px solid ${c.selected ? "var(--accent)" : "var(--border2)"}`,
+                            background: c.selected ? "var(--accent)" : "transparent",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            transition:"all 0.15s",
+                          }}>
+                            {c.selected && <span style={{ color:"var(--accent-fg,#0a0a0a)", fontSize:10, fontWeight:700 }}>✓</span>}
+                          </div>
+
+                          {/* Platform */}
+                          <span style={{
+                            fontFamily:"'DM Mono',monospace", fontSize:10,
+                            color:platColor, border:`1px solid ${platColor}`,
+                            padding:"2px 8px", letterSpacing:"0.05em", flexShrink:0,
+                          }}>
+                            {getPlatformLabel(c.platform)}
+                          </span>
+
+                          {/* Price */}
+                          <span style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:17, color:"var(--text)", marginLeft:"auto", flexShrink:0 }}>
+                            {formatPrice(c.price)}
+                          </span>
+                        </div>
+
+                        {/* Product name + link */}
+                        <div style={{ padding:"0 12px 10px" }}>
+                          <div style={{ fontSize:12, fontWeight:500, color:"var(--text)", marginBottom:6, lineHeight:1.4 }}>
+                            {displayName}
+                          </div>
+
+                          {/* Confidence bar */}
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
+                            <div style={{ flex:1, background:"var(--bg2)", height:3, borderRadius:2 }}>
+                              <div style={{ width:`${confPct}%`, height:3, background:confColor, borderRadius:2, transition:"width 0.5s" }} />
+                            </div>
+                            <span style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:confColor, flexShrink:0 }}>
+                              {confPct}% match
+                            </span>
+                          </div>
+
+                          {/* AI reasoning */}
+                          <div style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:"var(--muted)", lineHeight:1.5, marginBottom:6 }}>
+                            AI: {c.reasoning}
+                          </div>
+
+                          {/* Variant warning */}
+                          {!c.isSameProduct && (
+                            <div style={{ fontFamily:"'DM Mono',monospace", fontSize:9, color:"var(--accent2)", marginBottom:6, letterSpacing:"0.05em" }}>
+                              ⚠ AI suggests this may be a different variant — verify before enabling
+                            </div>
+                          )}
+
+                          {/* Product URL — clickable so user can verify */}
+                          <a
+                            href={c.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              display:"flex", alignItems:"center", gap:5,
+                              fontFamily:"'DM Mono',monospace", fontSize:10,
+                              color:"var(--muted2)", textDecoration:"none",
+                              border:"1px solid var(--border)", padding:"4px 10px",
+                              transition:"color 0.15s,border-color 0.15s",
+                              width:"fit-content",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--accent)"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--muted2)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "var(--border)"; }}
+                          >
+                            <span>OPEN ON {getPlatformLabel(c.platform).toUpperCase()}</span>
+                            <span>↗</span>
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:"var(--muted)", marginBottom:14 }}>
+                  {crossCandidates.filter(c=>c.selected).length} of {crossCandidates.length} selected to track
+                </div>
+
+                <div className="db-modal-actions">
+                  <button type="button" className="db-btn-cancel" onClick={() => handleConfirmCross(false)}>
+                    SKIP — SOURCE ONLY
+                  </button>
+                  <button
+                    type="button"
+                    className="db-btn-submit"
+                    onClick={() => handleConfirmCross(true)}
+                    style={{ opacity: crossCandidates.filter(c=>c.selected).length === 0 ? 0.45 : 1 }}
+                  >
+                    {crossCandidates.filter(c=>c.selected).length === 0
+                      ? "SELECT AT LEAST ONE"
+                      : `TRACK ${crossCandidates.filter(c=>c.selected).length} PLATFORM${crossCandidates.filter(c=>c.selected).length>1?"S":""} →`}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── STEP 4: Saving ── */}
+            {addStep === "saving" && (
+              <div style={{ textAlign:"center", padding:"32px 16px" }}>
+                <div style={{ display:"flex", justifyContent:"center", marginBottom:16 }}><Spinner size={28} /></div>
+                <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:16, color:"var(--text)" }}>
+                  Saving cross-platform trackers…
+                </div>
               </div>
-              <div className="db-field">
-                <label className="db-label">TARGET PRICE (₹)</label>
-                <input className="db-input" type="number" name="target_price" placeholder="e.g. 22000" min="1" max="9999999" step="1" required />
-              </div>
-              <div className="db-modal-actions">
-                <button type="button" className="db-btn-cancel" onClick={() => { setShowAddModal(false); setAddError(null); }}>CANCEL</button>
-                <button type="submit" className="db-btn-submit" disabled={isPending}>
-                  {isPending ? <><Spinner size={12}/> SAVING…</> : "START TRACKING →"}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}

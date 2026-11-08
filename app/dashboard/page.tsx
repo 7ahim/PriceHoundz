@@ -17,8 +17,26 @@ export default async function DashboardPage() {
     .eq("user_id", user.id).order("created_at", { ascending: false });
 
   const productIds = (products ?? []).map((p) => p.id);
+
+  // Primary price history
   const { data: allHistory } = productIds.length
     ? await supabase.from("price_history").select("*")
+        .in("product_id", productIds).order("scraped_at", { ascending: true })
+    : { data: [] };
+
+  // Cross-platform prices (confirmed only)
+  const { data: crossPlatformPrices } = productIds.length
+    ? await supabase.from("cross_platform_prices").select("*")
+        .in("product_id", productIds)
+        .eq("confirmed", true)
+        .eq("is_active", true)
+    : { data: [] };
+
+  const crossIds = (crossPlatformPrices ?? []).map((c) => c.id);
+
+  // Cross-platform price history for charts
+  const { data: crossHistory } = crossIds.length
+    ? await supabase.from("cross_price_history").select("*")
         .in("product_id", productIds).order("scraped_at", { ascending: true })
     : { data: [] };
 
@@ -31,6 +49,8 @@ export default async function DashboardPage() {
       profile={profile}
       products={products ?? []}
       allHistory={allHistory ?? []}
+      crossPlatformPrices={crossPlatformPrices ?? []}
+      crossHistory={crossHistory ?? []}
       notificationLogs={notificationLogs ?? []}
     />
   );
