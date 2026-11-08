@@ -183,7 +183,7 @@ function parseFlipkartHtml(html: string): ScrapeResult | null {
   // ── Name ────────────────────────────────────────────────
   const GENERIC = /^(electronics|home|flipkart|mobiles|appliances|fashion|grocery|home & furniture)$/i;
   const tidy = (n: string) =>
-    n.replace(/^buy\s+/i, "").replace(/\s+(online\s+)?(at|from)\s+best\s+price.*$/i, "")
+    n.replace(/\s+price\s+in\s+india.*$/i, "").replace(/^buy\s+/i, "").replace(/\s+(online\s+)?(at|from)\s+best\s+price.*$/i, "")
      .replace(/\s*[|\-–]\s*flipkart.*$/i, "").replace(/\s+online.*$/i, "").trim().slice(0, 200);
   let name: string | null = null;
   for (const sel of NAME_SELECTORS) {
