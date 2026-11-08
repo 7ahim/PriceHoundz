@@ -46,3 +46,30 @@ export type NotificationLog = {
 export type ProductWithHistory = TrackedProduct & {
   price_history: PriceHistory[];
 };
+
+// ── Cross-platform tracking ───────────────────────────────────
+export type CrossPlatformPrice = {
+  id: string;
+  product_id: string;
+  user_id: string;
+  platform: Platform;
+  url: string;
+  name: string | null;
+  image_url: string | null;
+  current_price: number | null;
+  confirmed: boolean | null;
+  ai_confidence: number | null;
+  ai_reasoning: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrossPriceHistory = {
+  id: string;
+  cross_platform_id: string;
+  product_id: string;
+  platform: Platform;
+  price: number;
+  scraped_at: string;
+};

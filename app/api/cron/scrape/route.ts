@@ -103,12 +103,48 @@ export async function GET(request: Request) {
       );
     }
 
+    // ── Linked platforms (same product on other stores) ───────
+    let crossScraped = 0;
+    try {
+      const { data: crossRows } = await admin
+        .from("cross_platform_prices")
+        .select("*")
+        .eq("is_active", true)
+        .order("updated_at", { ascending: true })
+        .limit(BATCH_SIZE);
+
+      for (let i = 0; i < (crossRows?.length ?? 0); i += CONCURRENCY) {
+        await Promise.allSettled(
+          crossRows!.slice(i, i + CONCURRENCY).map(async (row: any) => {
+            try {
+              const scraped = await scrapeProduct(row.url);
+              if (!scraped.price) return;
+              await admin.from("cross_price_history").insert({
+                cross_platform_id: row.id, product_id: row.product_id,
+                platform: row.platform, price: scraped.price,
+              });
+              const updates: Record<string, any> = { current_price: scraped.price, updated_at: new Date().toISOString() };
+              if (scraped.name     && !row.name)      updates.name      = scraped.name;
+              if (scraped.imageUrl && !row.image_url) updates.image_url = scraped.imageUrl;
+              await admin.from("cross_platform_prices").update(updates).eq("id", row.id);
+              crossScraped++;
+            } catch (err: any) {
+              console.error(`[cron] Cross scrape failed ${row.id}:`, err.message);
+            }
+          })
+        );
+      }
+    } catch (err: any) {
+      console.error("[cron] Cross-platform step skipped:", err.message);
+    }
+
     const alertCount = summary.filter((s) => s.alert).length;
     const failCount  = summary.filter((s) => s.error).length;
 
     return NextResponse.json({
       message:  "Cron complete",
       scraped:  summary.length,
+      crossScraped,
       alerts:   alertCount,
       failures: failCount,
       results:  summary,

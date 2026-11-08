@@ -13,7 +13,9 @@ import {
 } from "@/lib/actions";
 import { formatPrice, getPlatformLabel, getPlatformColor, timeAgo, detectPlatform } from "@/lib/utils";
 import { DashboardNav } from "@/components/DashboardNav";
-import type { Profile, TrackedProduct, PriceHistory } from "@/types/supabase";
+import CrossPlatformPanel from "@/components/CrossPlatformPanel";
+import type { Profile, TrackedProduct, PriceHistory, CrossPlatformPrice, CrossPriceHistory } from "@/types/supabase";
+import { CROSS_PLATFORMS } from "@/lib/crossPlatforms";
 
 interface Props { profile: Profile | null; products: TrackedProduct[]; allHistory: PriceHistory[]; }
 interface OptimisticProduct extends TrackedProduct { _scraping: boolean; }
@@ -30,7 +32,11 @@ function PriceTooltip({ active, payload, label }: any) {
   return (
     <div style={{ background:"var(--card)", border:"1px solid var(--border2)", padding:"10px 14px", fontFamily:"'DM Mono',monospace", fontSize:12 }}>
       <div style={{ color:"var(--muted)", marginBottom:4 }}>{label}</div>
-      <div style={{ color:"var(--accent)", fontWeight:500 }}>{formatPrice(payload[0].value)}</div>
+      {payload.filter((p: any) => p.value != null).map((p: any) => (
+        <div key={p.dataKey} style={{ color:p.stroke, fontWeight:500 }}>
+          {payload.length > 1 ? `${p.name}: ` : ""}{formatPrice(p.value)}
+        </div>
+      ))}
     </div>
   );
 }
@@ -56,6 +62,12 @@ export default function DashboardClient({ profile, products: initialProducts, al
   const [showEditModal, setShowEditModal] = useState(false);
   const [editProduct,   setEditProduct]   = useState<OptimisticProduct | null>(null);
   const [addError,      setAddError]      = useState<string | null>(null);
+  // Other-platform prices for the selected product (reported by CrossPlatformPanel)
+  const [crossRows,    setCrossRows]    = useState<CrossPlatformPrice[]>([]);
+  const [crossHistory, setCrossHistory] = useState<CrossPriceHistory[]>([]);
+  const handleCrossData = useCallback((rows: CrossPlatformPrice[], hist: CrossPriceHistory[]) => {
+    setCrossRows(rows); setCrossHistory(hist);
+  }, []);
   const [scrapeError,   setScrapeError]   = useState<string | null>(null);
   // Mobile sidebar state — controls the collapsible sidebar overlay on mobile
   const [mobileSidebar, setMobileSidebar] = useState(false);
@@ -67,6 +79,31 @@ export default function DashboardClient({ profile, products: initialProducts, al
     .filter((h) => h.product_id === selectedId)
     .map((h) => ({ date: new Date(h.scraped_at).toLocaleDateString("en-IN",{month:"short",day:"numeric"}), price: h.price }));
   const historyPrices = history.map((h) => h.price);
+
+  // Main chart data: this product's price plus one line per linked platform
+  const crossSeries = crossRows
+    .filter((r) => r.platform !== selected?.platform && crossHistory.some((h) => h.cross_platform_id === r.id))
+    .map((r) => ({
+      key:   r.platform as string,
+      label: CROSS_PLATFORMS.find((p) => p.id === r.platform)?.label ?? r.platform,
+      color: getPlatformColor(r.platform),
+    }));
+  const hasCross  = crossSeries.length > 0;
+  const chartData = (() => {
+    if (!hasCross) return history;
+    const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { month:"short", day:"numeric" });
+    const pts = new Map<string, Record<string, any>>();
+    const put = (iso: string, key: string, price: number) => {
+      const label = day(iso);
+      const e = pts.get(label) ?? { date: label, ts: new Date(iso).getTime() };
+      e[key] = price;                       // last check of the day wins
+      pts.set(label, e);
+    };
+    localHistory.filter((h) => h.product_id === selectedId).forEach((h) => put(h.scraped_at, "price", h.price));
+    crossHistory.forEach((h) => { if (crossSeries.some((s) => s.key === h.platform)) put(h.scraped_at, h.platform, h.price); });
+    return Array.from(pts.values()).sort((a, b) => a.ts - b.ts);
+  })();
+  const fewPoints = chartData.length <= 2;
   const allTimeLow    = historyPrices.length ? Math.min(...historyPrices) : null;
   const allTimeHigh   = historyPrices.length ? Math.max(...historyPrices) : null;
   const totalTracked  = localProducts.length;
@@ -676,7 +713,10 @@ export default function DashboardClient({ profile, products: initialProducts, al
                 <div className="db-chart-header">
                   <div className="db-chart-title">PRICE HISTORY</div>
                   <div className="db-chart-legend">
-                    <div className="db-chart-legend-item"><div className="db-chart-legend-line" style={{ background:"var(--accent)" }}/> Price</div>
+                    <div className="db-chart-legend-item"><div className="db-chart-legend-line" style={{ background:"var(--accent)" }}/> {hasCross ? "This product" : "Price"}</div>
+                    {crossSeries.map((s) => (
+                      <div key={s.key} className="db-chart-legend-item"><div className="db-chart-legend-line" style={{ background:s.color }}/> {s.label}</div>
+                    ))}
                     <div className="db-chart-legend-item"><div className="db-chart-legend-line" style={{ borderTop:"2px dashed var(--accent2)",height:0 }}/> Target</div>
                   </div>
                 </div>
@@ -686,7 +726,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
                   <div className="db-no-history">No price data yet — check back after the first scrape.</div>
                 ) : (
                   <ResponsiveContainer width="100%" height={260}>
-                    <LineChart data={history} margin={{ top:4,right:8,left:0,bottom:0 }}>
+                    <LineChart data={chartData} margin={{ top:4,right:8,left:0,bottom:0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="color-mix(in srgb,var(--text) 6%,transparent)" />
                       <XAxis dataKey="date" tick={{ fontFamily:"'DM Mono',monospace",fontSize:10,fill:"var(--muted)" }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontFamily:"'DM Mono',monospace",fontSize:10,fill:"var(--muted)" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}K`} width={48} />
@@ -694,11 +734,17 @@ export default function DashboardClient({ profile, products: initialProducts, al
                       <ReferenceLine y={selected.target_price} stroke="var(--accent2)" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.7}
                         label={{ value:"Target", fill:"var(--accent2)", fontSize:10, fontFamily:"'DM Mono',monospace", position:"insideTopRight" }}
                       />
-                      <Line type="monotone" dataKey="price" stroke="var(--accent)" strokeWidth={2} dot={false} activeDot={{ r:4,fill:"var(--accent)",strokeWidth:0 }} />
+                      <Line type="monotone" dataKey="price" name={hasCross ? "This product" : "Price"} stroke="var(--accent)" strokeWidth={2} dot={fewPoints ? { r:3, fill:"var(--accent)", strokeWidth:0 } : false} activeDot={{ r:4,fill:"var(--accent)",strokeWidth:0 }} connectNulls />
+                      {crossSeries.map((s) => (
+                        <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2} dot={fewPoints ? { r:3, fill:s.color, strokeWidth:0 } : false} activeDot={{ r:4, fill:s.color, strokeWidth:0 }} connectNulls />
+                      ))}
                     </LineChart>
                   </ResponsiveContainer>
                 )}
               </div>
+
+              {/* Same product on other platforms */}
+              <CrossPlatformPanel product={selected} onData={handleCrossData} />
             </>
           )}
         </main>
