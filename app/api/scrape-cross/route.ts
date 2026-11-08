@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { scrapeProduct } from "@/lib/scrapers";
+import { alertIfCrossTargetHit } from "@/lib/crossAlert";
 
 export const maxDuration = 60;
 
@@ -53,6 +54,11 @@ export async function POST(request: Request) {
       console.error("[/api/scrape-cross] update failed:", uErr);
       return NextResponse.json({ success: false, error: `Price found (₹${result.price}) but saving failed: ${uErr.message}` }, { status: 500 });
     }
+
+    await alertIfCrossTargetHit(admin, {
+      productId: row.product_id, platform: row.platform,
+      price: result.price, url: row.url, name: updates.name ?? row.name,
+    });
 
     return NextResponse.json({
       success: true, price: result.price, name: updates.name ?? row.name,

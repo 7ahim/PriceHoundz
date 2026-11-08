@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { scrapeProduct }     from "@/lib/scrapers";
+import { alertIfCrossTargetHit } from "@/lib/crossAlert";
 
 // Vercel Hobby = 10 s max / Pro = 300 s max function duration.
 // Keep BATCH_SIZE small on Hobby; increase on Pro.
@@ -128,6 +129,10 @@ export async function GET(request: Request) {
               if (scraped.imageUrl && !row.image_url) updates.image_url = scraped.imageUrl;
               await admin.from("cross_platform_prices").update(updates).eq("id", row.id);
               crossScraped++;
+              await alertIfCrossTargetHit(admin, {
+                productId: row.product_id, platform: row.platform,
+                price: scraped.price, url: row.url, name: scraped.name ?? row.name,
+              });
             } catch (err: any) {
               console.error(`[cron] Cross scrape failed ${row.id}:`, err.message);
             }

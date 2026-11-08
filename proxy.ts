@@ -1,4 +1,5 @@
-// proxy.ts  
+// proxy.ts  (project root, next to package.json)
+// Next.js 16 renamed "middleware" to "proxy".
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 

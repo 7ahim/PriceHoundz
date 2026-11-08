@@ -632,6 +632,12 @@ export default function DashboardClient({ profile, products: initialProducts, al
                     <div className="db-badge" style={{ borderColor:getPlatformColor(selected.platform), color:getPlatformColor(selected.platform) }}>
                       {getPlatformLabel(selected.platform)}
                     </div>
+                    {crossRows.filter((r) => r.platform !== selected.platform).map((r) => (
+                      <div key={r.id} className="db-badge" title={r.is_active ? "Linked platform" : "Linked platform (paused)"}
+                        style={{ borderColor:getPlatformColor(r.platform), color:getPlatformColor(r.platform), opacity: r.is_active ? 1 : 0.45 }}>
+                        {getPlatformLabel(r.platform)}
+                      </div>
+                    ))}
                     <div className={`db-status-badge ${
                       selected._scraping ? "db-status-loading"
                       : selected.current_price!=null&&selected.current_price<=selected.target_price ? "db-status-hit"

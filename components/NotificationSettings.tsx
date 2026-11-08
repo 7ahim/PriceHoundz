@@ -129,7 +129,7 @@ export default function NotificationSettings({ logs, products, email }: Props) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
           {[
-            { icon: Timer, title: "Checked every 4 hours", desc: "The cron job runs every 4 hours and scrapes all your active products." },
+            { icon: Timer, title: "Checked every 24 hours", desc: "The cron job runs once a day and scrapes all your active products, including linked platforms." },
             { icon: Target, title: "One alert per target", desc: "We send one email when the price first hits your target. Reset by editing your target price." },
             { icon: Inbox, title: "Delivered to your Gmail", desc: "Alerts land in the inbox of the Gmail you signed in with." },
           ].map((item) => (
