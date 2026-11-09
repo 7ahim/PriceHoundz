@@ -628,7 +628,7 @@ export default function DashboardClient({ profile, products: initialProducts, al
             <>
               <div className="db-detail-header">
                 <div style={{ overflow:"hidden", flex:1 }}>
-                  <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
+                  <div className="db-platform-badges" style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
                     <div className="db-badge" style={{ borderColor:getPlatformColor(selected.platform), color:getPlatformColor(selected.platform) }}>
                       {getPlatformLabel(selected.platform)}
                     </div>

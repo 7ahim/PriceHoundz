@@ -43,7 +43,7 @@ export default function NotificationSettings({ logs, products, email }: Props) {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
       {/* ── Email config card ── */}
-      <div style={{
+      <div className="ns-config" style={{
         background: "var(--bg2)", border: "1px solid var(--border)",
         padding: "20px 24px",
       }}>
@@ -116,7 +116,7 @@ export default function NotificationSettings({ logs, products, email }: Props) {
       </div>
 
       {/* ── How alerts work ── */}
-      <div style={{
+      <div className="ns-how" style={{
         background: "var(--bg2)", border: "1px solid var(--border)",
         padding: "20px 24px",
       }}>
@@ -151,7 +151,7 @@ export default function NotificationSettings({ logs, products, email }: Props) {
       </div>
 
       {/* ── Notification log ── */}
-      <div style={{
+      <div className="ns-log" style={{
         background: "var(--bg2)", border: "1px solid var(--border)",
         padding: "20px 24px",
       }}>

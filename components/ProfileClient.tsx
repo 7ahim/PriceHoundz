@@ -217,7 +217,7 @@ export default function ProfileClient({ profile, productCount, alertCount, activ
         }
       `}</style>
 
-      <DashboardNav activeTab="tracker" />
+      <DashboardNav activeTab="tracker" tourPage="profile" />
 
       <div className="ph-page pf-page">
         <div className="pf-body">

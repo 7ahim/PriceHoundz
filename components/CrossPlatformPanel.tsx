@@ -145,7 +145,7 @@ export default function CrossPlatformPanel({ product, onData }: Props) {
   };
 
   return (
-    <div style={box}>
+    <div className="db-cross-panel" style={box}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 6 }}>
         <div>
           <div style={{ ...mono, fontSize: 12, letterSpacing: "0.1em", color: "var(--muted)" }}>COMPARE ON OTHER PLATFORMS</div>

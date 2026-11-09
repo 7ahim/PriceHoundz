@@ -231,11 +231,12 @@ interface DashboardNavProps {
   userEmail?:   string | null;
   onMenuClick?: () => void;   // called when mobile hamburger tapped
   mobileMenuOpen?: boolean;
+  tourPage?:    "tracker" | "analytics" | "notifications" | "profile"; // which guide to run
 }
 
 export function DashboardNav({
   activeTab, notifCount = 0, userEmail,
-  onMenuClick, mobileMenuOpen = false,
+  onMenuClick, mobileMenuOpen = false, tourPage,
 }: DashboardNavProps) {
   const { theme, toggle } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -254,7 +255,7 @@ export function DashboardNav({
       {tourRun && (
         <OnboardingTour
           forceStart
-          page={activeTab === "analytics" ? "analytics" : "tracker"}
+          page={tourPage ?? activeTab}
           onFinish={() => setTourRun(false)}
         />
       )}

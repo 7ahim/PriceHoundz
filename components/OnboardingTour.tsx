@@ -9,69 +9,86 @@ import { Check } from "lucide-react";
 const TOUR_SEEN_KEY      = "pricehound_tour_seen";
 const AN_TOUR_SEEN_KEY   = "pricehound_an_tour_seen";
 
-// ── TRACKER steps ────────────────────────────────────────────
-// Each step has an `optional` flag — if the target element doesn't
-// exist in the DOM (e.g. no products yet), the step is skipped.
-const TRACKER_STEPS_ALL: (Step & { optional?: boolean; noProducts?: boolean })[] = [
+// ── Steps ────────────────────────────────────────────────────
+// `target` is a CSS selector (comma lists allowed). When the tour starts we
+// resolve each one to the FIRST VISIBLE matching element; steps whose target
+// is missing or hidden (e.g. the sidebar on mobile, or price cards when no
+// product exists) are dropped, so the spotlight never points at nothing.
+type TourStep = Step & { target: string };
+
+const TRACKER_STEPS: TourStep[] = [
   {
-    // Always shown — the "add product" button is always visible
     target: ".db-add-btn",
-    title: "Add your first product",
-    content: "Paste any Amazon, Flipkart, Myntra, or Reliance Digital URL along with your target price. We fetch the current price instantly.",
+    title: "Add a product",
+    content: "Paste a product URL from Amazon, Flipkart, Myntra, Croma, Reliance Digital or Poorvika along with your target price. We fetch the current price instantly.",
     placement: "right",
+    disableBeacon: true,
+  },
+  {
+    // Mobile only — the sidebar lives in a drawer behind this button
+    target: ".db-mobile-toggle",
+    title: "Your products",
+    content: "Tap here to open your product list and the Add Product button.",
+    placement: "bottom",
     disableBeacon: true,
   },
   {
     target: ".db-stats",
     title: "Your at-a-glance stats",
-    content: "Total products tracked, alerts fired, price readings collected, and paused trackers — live counts at the top of every session.",
+    content: "Total products tracked, alerts sent, price checks collected, and paused trackers.",
     placement: "bottom",
     disableBeacon: true,
   },
   {
     target: ".db-product-list",
     title: "Your tracked products",
-    content: "Every product you add appears here. Green dot = actively watching. Yellow = target price hit. Grey = paused.",
+    content: "Every product you add appears here. Green dot = actively tracking. Yellow = target price hit. Grey = paused.",
     placement: "right",
     disableBeacon: true,
   },
   {
-    // Only show if there's a selected product with price cards visible
-    target: ".db-price-cards",
-    title: "Price at a glance",
-    content: "Current price, your target, all-time low, and all-time high — four cards that tell the whole story.",
+    target: ".db-platform-badges",
+    title: "Stores & status",
+    content: "The first badge is the store this product was added from. Any other stores you link in the Compare panel get their own badge here, next to the live tracking status.",
     placement: "bottom",
     disableBeacon: true,
-    optional: true,
   },
   {
-    // Only show if there's a chart rendered
-    target: ".db-chart-section",
-    title: "Price history chart",
-    content: "The line shows price movement over time. The dashed orange line is your target — you get an email the moment the price line crosses below it.",
-    placement: "top",
-    disableBeacon: true,
-    optional: true,
-  },
-  {
-    // Only show if detail actions are visible (product selected)
     target: ".db-detail-actions",
     title: "Manage a tracked product",
-    content: "Edit your target price, refresh the price now, pause tracking temporarily, or delete a product entirely.",
+    content: "Edit your target price, refresh the price now, pause tracking temporarily, or delete the product entirely.",
     placement: "bottom",
     disableBeacon: true,
-    optional: true,
   },
   {
-    // Sidebar user section — always present
-    target: ".db-user",
-    title: "Your account",
-    content: "Your signed-in Gmail. All price drop alerts land here. Click your email to visit your profile, or the arrow to sign out.",
+    target: ".db-price-cards",
+    title: "Price at a glance",
+    content: "Current price, your target, all-time low and all-time high, in four cards.",
+    placement: "bottom",
+    disableBeacon: true,
+  },
+  {
+    target: ".db-chart-section",
+    title: "Price history chart",
+    content: "The line shows price movement over time, and the dashed line is your target. Stores you link below appear here as extra coloured lines so you can compare them.",
     placement: "top",
     disableBeacon: true,
   },
   {
-    // Navbar guide button itself — last step points users to analytics
+    target: ".db-cross-panel",
+    title: "Compare on other stores",
+    content: "Paste the same product's link from another store. Prices are re-checked daily and plotted on the chart above, and you get an email as soon as any store reaches your target.",
+    placement: "top",
+    disableBeacon: true,
+  },
+  {
+    target: ".db-user",
+    title: "Your account",
+    content: "Your signed-in Gmail. All price drop alerts land here. Click it to open your profile, or use the sign-out icon.",
+    placement: "top",
+    disableBeacon: true,
+  },
+  {
     target: ".ph-nav-tab[href='/dashboard/analytics']",
     title: "Explore Analytics",
     content: "Head to the Analytics tab for savings charts, price trends, scrape activity, and sparklines for every tracked product.",
@@ -80,40 +97,100 @@ const TRACKER_STEPS_ALL: (Step & { optional?: boolean; noProducts?: boolean })[]
   },
 ];
 
-// ── ANALYTICS steps ──────────────────────────────────────────
-const ANALYTICS_STEPS: (Step & { optional?: boolean })[] = [
+const ANALYTICS_STEPS: TourStep[] = [
   {
     target: ".an-header",
-    title: "Analytics Overview",
-    content: "Your price intelligence HQ. Every chart and stat on this page is derived from live scrape data PriceHound has collected for your products.",
+    title: "Analytics overview",
+    content: "Every chart and stat on this page comes from the price checks PriceHound has collected for your products.",
     placement: "bottom",
     disableBeacon: true,
   },
   {
     target: ".an-stats",
     title: "Six headline numbers",
-    content: "Products tracked, total data points, alerts sent, potential savings, biggest % price drop, and the most volatile product — all at a glance.",
+    content: "Products tracked, data points, alerts sent, potential savings, best price drop, and your most volatile product.",
     placement: "bottom",
     disableBeacon: true,
-    optional: true,
   },
   {
     target: ".an-grid-2",
     title: "Price trends & savings",
-    content: "Left: normalised price trends for all products on one axis. Right: cumulative savings stacking up every time a target price is hit.",
+    content: "Trends for all products on one axis, and the savings that stack up every time a target price is hit.",
     placement: "top",
     disableBeacon: true,
-    optional: true,
   },
   {
     target: ".an-sparklines",
     title: "Product sparklines",
-    content: "Mini charts for every individual product — current price, target, all-time low, and all-time high in one compact card.",
+    content: "A mini chart per product with current price, target, all-time low and all-time high in one compact card.",
     placement: "top",
     disableBeacon: true,
-    optional: true,
   },
 ];
+
+const NOTIFICATION_STEPS: TourStep[] = [
+  {
+    target: ".ns-config",
+    title: "Where alerts go",
+    content: "Price drop alerts are emailed to your Gmail. Use the button to send yourself a test email and confirm it arrives.",
+    placement: "bottom",
+    disableBeacon: true,
+  },
+  {
+    target: ".ns-how",
+    title: "How alerts work",
+    content: "Prices are checked every 24 hours. You get one email when a price first hits your target, from any linked store. Edit the target price to re-arm it.",
+    placement: "top",
+    disableBeacon: true,
+  },
+  {
+    target: ".ns-log",
+    title: "Alert history",
+    content: "Every alert that has been sent, with the price at the time and when it went out.",
+    placement: "top",
+    disableBeacon: true,
+  },
+];
+
+const PROFILE_STEPS: TourStep[] = [
+  {
+    target: ".pf-section",
+    title: "Your profile",
+    content: "Update your display name and see which Google account you signed in with.",
+    placement: "bottom",
+    disableBeacon: true,
+  },
+  {
+    target: ".pf-links-grid",
+    title: "Quick navigation",
+    content: "Jump straight to the tracker, analytics, notifications or privacy policy.",
+    placement: "top",
+    disableBeacon: true,
+  },
+  {
+    target: ".pf-danger-section",
+    title: "Danger zone",
+    content: "Permanently delete your account and all tracked data. This can't be undone.",
+    placement: "top",
+    disableBeacon: true,
+  },
+];
+
+export type TourPage = "tracker" | "analytics" | "notifications" | "profile";
+
+const STEPS_BY_PAGE: Record<TourPage, TourStep[]> = {
+  tracker:       TRACKER_STEPS,
+  analytics:     ANALYTICS_STEPS,
+  notifications: NOTIFICATION_STEPS,
+  profile:       PROFILE_STEPS,
+};
+
+const SEEN_KEYS: Record<TourPage, string> = {
+  tracker:       TOUR_SEEN_KEY,
+  analytics:     AN_TOUR_SEEN_KEY,
+  notifications: "pricehound_notif_tour_seen",
+  profile:       "pricehound_profile_tour_seen",
+};
 
 // ── Custom tooltip ────────────────────────────────────────────
 function PriceHoundTooltip({ index, step, backProps, closeProps, primaryProps, tooltipProps, isLastStep, size }: any) {
@@ -177,25 +254,35 @@ function PriceHoundTooltip({ index, step, backProps, closeProps, primaryProps, t
 }
 
 // ── Helpers ───────────────────────────────────────────────────
-// Filter steps to only those whose target element exists in the DOM.
-// `optional` steps are skipped when their target is missing.
-// Non-optional steps are always included (Joyride will highlight what it can).
-function resolveSteps(rawSteps: (Step & { optional?: boolean; noProducts?: boolean })[]) {
-  return rawSteps.filter((step) => {
-    if (!step.optional) return true; // always include required steps
+function isVisible(el: Element): boolean {
+  const r = (el as HTMLElement).getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return false;
+  const cs = window.getComputedStyle(el);
+  return cs.display !== "none" && cs.visibility !== "hidden";
+}
+
+// Keep only steps whose target exists AND is visible, and point each step at
+// that actual element (so hidden duplicates, e.g. a sidebar button on mobile,
+// can never be picked by mistake).
+function resolveSteps(rawSteps: TourStep[]): Step[] {
+  const out: Step[] = [];
+  for (const step of rawSteps) {
+    let el: Element | undefined;
     try {
-      return !!document.querySelector(step.target as string);
+      el = Array.from(document.querySelectorAll(step.target)).find(isVisible);
     } catch {
-      return false;
+      el = undefined;
     }
-  });
+    if (el) out.push({ ...step, target: el as HTMLElement });
+  }
+  return out;
 }
 
 // ── Main component ────────────────────────────────────────────
 interface OnboardingTourProps {
   forceStart?: boolean;
   onFinish?:   () => void;
-  page?:       "tracker" | "analytics";
+  page?:       TourPage;
 }
 
 export default function OnboardingTour({ forceStart = false, onFinish, page = "tracker" }: OnboardingTourProps) {
@@ -204,12 +291,12 @@ export default function OnboardingTour({ forceStart = false, onFinish, page = "t
   const [stepIndex, setStepIndex] = useState(0);
   const [ready,     setReady]     = useState(false);
 
-  const seenKey = page === "analytics" ? AN_TOUR_SEEN_KEY : TOUR_SEEN_KEY;
+  const seenKey = SEEN_KEYS[page];
 
   useEffect(() => {
     setReady(true);
 
-    const rawSteps = page === "analytics" ? ANALYTICS_STEPS : TRACKER_STEPS_ALL;
+    const rawSteps = STEPS_BY_PAGE[page];
 
     if (forceStart) {
       // Small delay lets the DOM settle before we query for optional targets
@@ -238,6 +325,11 @@ export default function OnboardingTour({ forceStart = false, onFinish, page = "t
     if (type === "step:after") {
       if (action === "next") setStepIndex((i) => i + 1);
       else if (action === "prev") setStepIndex((i) => Math.max(0, i - 1));
+    }
+
+    // Target vanished after the tour started — move on instead of hanging
+    if (type === "error:target_not_found") {
+      setStepIndex((i) => (action === "prev" ? Math.max(0, i - 1) : i + 1));
     }
 
     if (action === "close" || status === "finished" || status === "skipped") {
@@ -309,7 +401,7 @@ export function TourTriggerButton({ onClick }: { onClick: () => void }) {
 }
 
 export function useTour() {
-  const resetTour    = useCallback(() => { localStorage.removeItem(TOUR_SEEN_KEY); localStorage.removeItem(AN_TOUR_SEEN_KEY); }, []);
+  const resetTour    = useCallback(() => { Object.values(SEEN_KEYS).forEach((k) => localStorage.removeItem(k)); }, []);
   const hasSeenTour  = useCallback(() => !!localStorage.getItem(TOUR_SEEN_KEY), []);
   const restartTour  = useCallback(() => { resetTour(); window.location.reload(); }, [resetTour]);
   return { restartTour, hasSeenTour, resetTour };
