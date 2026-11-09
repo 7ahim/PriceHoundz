@@ -49,7 +49,7 @@ export function getPlatformColor(platform: string | null): string {
     case "myntra":          return "#ff3f6c";
     case "reliancedigital": return "#e2231a";
     case "croma":           return "#00a6a0"; // Croma teal
-    case "poorvika":        return "#e8251a"; // Poorvika red
+    case "poorvika":        return "#a78bfa"; // Poorvika purple (distinct from Reliance red)
     case "meesho":          return "#f43397"; // Meesho pink
     default:                return "#9a9a9a";
   }
